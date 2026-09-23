@@ -1,0 +1,56 @@
+{
+  "dataset": "ULB creditcard.csv",
+  "rows": 284807,
+  "frauds": 492,
+  "split": "time-ordered 70/15/15",
+  "test_rows": 42722,
+  "test_frauds": 52,
+  "models": {
+    "logistic_regression": {
+      "pr_auc": 0.6938,
+      "roc_auc": 0.9777,
+      "review": {
+        "threshold": 0.9967,
+        "precision": 0.5132,
+        "recall": 0.75,
+        "alerts_per_10k": 17.8,
+        "tp": 39,
+        "fp": 37,
+        "fn": 13
+      },
+      "block": {
+        "threshold": 1.0,
+        "precision": 0.9706,
+        "recall": 0.6346,
+        "alerts_per_10k": 8.0,
+        "tp": 33,
+        "fp": 1,
+        "fn": 19
+      }
+    },
+    "sentinelai_lightgbm": {
+      "pr_auc": 0.7507,
+      "roc_auc": 0.979,
+      "best_iteration": 245,
+      "train_seconds": 11.9,
+      "review": {
+        "threshold": 0.0241,
+        "precision": 0.5652,
+        "recall": 0.75,
+        "alerts_per_10k": 16.2,
+        "tp": 39,
+        "fp": 30,
+        "fn": 13
+      },
+      "block": {
+        "threshold": 0.9066,
+        "precision": 0.9722,
+        "recall": 0.6731,
+        "alerts_per_10k": 8.4,
+        "tp": 35,
+        "fp": 1,
+        "fn": 17
+      }
+    }
+  }
+}
