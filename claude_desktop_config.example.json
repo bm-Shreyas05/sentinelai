@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sentinelai": {
+      "command": "python",
+      "args": ["-m", "sentinelai", "mcp"],
+      "cwd": "/absolute/path/to/sentinelai",
+      "env": {
+        "SENTINEL_DB_PATH": "/absolute/path/to/sentinelai/var/sentinel.db",
+        "SENTINEL_MODEL_DIR": "/absolute/path/to/sentinelai/var/models"
+      }
+    }
+  }
+}
