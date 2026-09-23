@@ -1,0 +1,15 @@
+# One-click deploy of the API on Render (render.com). The dashboard deploys separately on
+# Streamlit Community Cloud (entry point: dashboard/app.py); it trains its own model on first boot.
+services:
+  - type: web
+    name: sentinelai-api
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SENTINEL_API_KEYS
+        generateValue: true
+    disk:
+      name: sentinel-data
+      mountPath: /app/var
+      sizeGB: 1

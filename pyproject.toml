@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinelai"
+version = "1.0.0"
+description = "Real-time fraud detection, explanation and case management for Indian payments, with an MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "numpy>=1.26", "pandas>=2.1", "scikit-learn>=1.4", "lightgbm>=4.3", "joblib>=1.3",
+  "fastapi>=0.110", "uvicorn>=0.29", "httpx>=0.27", "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.9"]
+dashboard = ["streamlit>=1.37"]
+dev = ["pytest>=8", "mcp>=1.9", "streamlit>=1.37"]
+
+[project.scripts]
+sentinelai = "sentinelai.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["sentinelai*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
