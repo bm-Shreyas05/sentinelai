@@ -97,3 +97,16 @@ def test_drift_report_and_metrics(engine):
     assert d["ready"] and len(d["features"]) == len(engine.bundle.features)
     m = engine.live_metrics(10**9)
     assert m["transactions"] > 4000 and 0 < m["alert_rate"] < 0.2
+
+
+def test_transfer_to_collector_payee_is_flagged_with_payee_reason(engine, known_user):
+    """A scam-style transfer from the victim's own phone at home: only the payee gives it away."""
+    ts = known_user["last_ts"] + 20000
+    for i in range(8):                            # the collector has been paid by many other accounts
+        engine.store.update({"user_id": f"COLL-SENDER{i}", "amount": 9000, "city": "Delhi", "device_id": f"cs{i}",
+                             "category": "p2p_transfer", "payee": "collector-test@upi", "ts": ts - 600 + i})
+    r = engine.score(_txn(known_user, amount=known_user["typical"] * 4, category="p2p_transfer",
+                          payee="collector-test@upi", ts=ts))
+    assert r["decision"] != "ALLOW"
+    assert {"payee", "collector"} & {x["code"] for x in r["reasons"]["risk"]}
+    assert engine.get_transaction(r["txn_id"])["payee"] == "collector-test@upi"

@@ -207,7 +207,7 @@ def page_investigation():
         <div style="font-size:1.05rem;margin-top:.2rem">{head}</div>
         <div class="muted mono">Case {cid} · {t['txn_id']} · {t['user_id']} · model {t['model_version']} · status {c['status']}</div></div>
         <div style="text-align:right"><div class="mono" style="font-size:1.6rem;font-weight:600">{inr(t['amount'])}</div>
-        <div class="muted">{t['merchant']} · {t['city']} · {t['channel'].upper()}</div></div>
+        <div class="muted">{t.get('payee') if t['category'] == 'p2p_transfer' and t.get('payee') else t['merchant']} · {t['city']} · {t['channel'].upper()}</div></div>
       </div></div>""", unsafe_allow_html=True)
 
     if r.get("policy_override"):
@@ -263,7 +263,7 @@ def page_investigation():
     h = pd.DataFrame(eng.user_history(t["user_id"], 15))
     h["time"] = pd.to_datetime(h.ts, unit="s").dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata").dt.strftime("%d %b %H:%M")
     h["amount"] = h.amount.map(inr)
-    st.dataframe(h[["time", "txn_id", "amount", "category", "city", "device_id", "score", "decision", "label"]],
+    st.dataframe(h[["time", "txn_id", "amount", "category", "payee", "city", "device_id", "score", "decision", "label"]],
                  hide_index=True, use_container_width=True)
 
 

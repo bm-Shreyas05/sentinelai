@@ -30,6 +30,8 @@ REASON_QUERIES = {
     "new_customer": "new payee added high-value transfer additional authentication",
     "spend_velocity": "spend in one hour exceeding typical transaction value triggers review",
     "scam_pattern": "social-engineering scam customer called before release never asks OTP remote-access",
+    "payee": "new payee added high-value transfer additional authentication",
+    "collector": "mule accounts escalate AML STR suspicious",
 }
 
 

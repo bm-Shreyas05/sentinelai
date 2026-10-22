@@ -3,8 +3,6 @@ import json
 
 import numpy as np
 
-from .features import FEATURES
-
 
 def psi(edges, ref_props, values, eps=1e-4):
     edges = np.asarray(edges, dtype=float)
@@ -25,10 +23,11 @@ def drift_report(conn, bundle, window=2000, min_rows=200):
                         "ORDER BY created_at DESC LIMIT ?", (bundle.version, window)).fetchall()
     if len(rows) < min_rows:
         return {"ready": False, "rows": len(rows), "needed": min_rows}
-    X = np.array([[json.loads(r["features"])[f] for f in FEATURES] for r in rows])
+    names = bundle.features                               # the serving model's own feature list
+    X = np.array([[json.loads(r["features"]).get(f, 0.0) for f in names] for r in rows])
     scores = np.array([r["score"] for r in rows])
     feats = []
-    for i, name in enumerate(FEATURES):
+    for i, name in enumerate(names):
         ref = bundle.reference["features"][name]
         v = psi(ref["edges"], ref["props"], X[:, i])
         feats.append({"feature": name, "psi": round(v, 4), "status": status(v)})
