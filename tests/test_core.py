@@ -39,3 +39,98 @@ def test_psi_detects_shift_and_not_noise():
     props = np.histogram(ref, bins=edges)[0] / len(ref)
     assert psi(edges, props, rng.normal(0, 1, 2000)) < 0.05
     assert psi(edges, props, rng.normal(1.5, 1, 2000)) > 0.25
+
+
+def test_payee_features_and_old_database_migration(tmp_path):
+    import sqlite3
+    from sentinelai import db
+    old = tmp_path / "old.db"                    # a database created before payee support
+    c = sqlite3.connect(old)
+    c.execute("CREATE TABLE transactions (txn_id TEXT PRIMARY KEY, user_id TEXT, ts REAL, amount REAL, "
+              "merchant TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT, score REAL, decision TEXT, "
+              "model_version TEXT, features TEXT, contributions TEXT, reasons TEXT, label INTEGER, "
+              "sim_label INTEGER, created_at REAL)")
+    c.commit(); c.close()
+    conn = db.connect(old)
+    assert "payee" in {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
+
+    fs = FeatureStore(conn)
+    p2p = lambda u, payee, ts: {"user_id": u, "amount": 2000, "city": "Pune", "device_id": f"d{u}",
+                                "category": "p2p_transfer", "payee": payee, "ts": ts}
+    for i in range(6):
+        fs.update(p2p(f"U{i}", "COL1@upi", 1000 + i))
+    f, ctx = FeatureStore(conn).compute(p2p("U9", "COL1@upi", 2000))     # state survives a restart
+    assert f["is_new_payee"] == 1 and ctx["payee_other_senders"] == 6
+    f, ctx = fs.compute(p2p("U0", "COL1@upi", 2000))                     # paid before; others excludes self
+    assert f["is_new_payee"] == 0 and ctx["payee_other_senders"] == 5
+    shop = {**p2p("U0", "", 2000), "category": "grocery", "payee": "grocery-PUN"}
+    f, _ = fs.compute(shop)                                             # merchants: payee features off
+    assert f["is_new_payee"] == 0 and f["payee_fan_in_log"] == 0
+
+
+def test_warm_up_persists_histories_without_scoring(tmp_path):
+    from sentinelai import db
+    from sentinelai.features import warm_up
+    from sentinelai.synthetic import Simulator
+    conn = db.connect(tmp_path / "w.db")
+    events = list(Simulator(n_users=50, seed=3).stream(2000))
+    assert warm_up(FeatureStore(conn), events) == len(events)
+    assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0
+    replayed = FeatureStore()
+    for e in events:
+        replayed.update(e)
+    nxt = dict(events[-1], ts=events[-1]["ts"] + 60)
+    assert FeatureStore(conn).compute(nxt)[0] == replayed.compute(nxt)[0]
+
+
+def test_drift_ignores_partial_day_and_ageing_customers():
+    import json, sqlite3
+    from types import SimpleNamespace
+    from sentinelai.drift import drift_report
+    from sentinelai.features import FEATURES
+    conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE transactions (features TEXT, score REAL, ts REAL, model_version TEXT, created_at REAL)")
+    rng = np.random.default_rng(0)
+    edges = [-1.0, 0.5, 1.0, 2.0]
+    ref = {"features": {f: {"edges": edges, "props": [0.3, 0.4, 0.3]} for f in FEATURES},
+           "score": {"edges": [0, 0.5, 1], "props": [0.9, 0.1]}, "cold_start_share": 0.1}
+    ref["features"]["hour"] = {"edges": list(np.arange(-0.5, 24)), "props": [1 / 24] * 24}
+
+    def report(hours, history):
+        conn.execute("DELETE FROM transactions")
+        for k in range(300):
+            f = {n: float(rng.choice([0.0, 0.75, 1.5])) for n in FEATURES}
+            f["hour"], f["history_log"] = float(k % hours), history
+            conn.execute("INSERT INTO transactions VALUES (?,?,?,?,?)",
+                         (json.dumps(f), 0.8 if k % 10 == 0 else 0.01, k * hours * 3600 / 300, "v1", k))
+        d = drift_report(conn, SimpleNamespace(version="v1", reference=ref))
+        return {f["feature"]: f for f in d["features"]}, d
+
+    f, d = report(hours=6, history=4.0)                  # morning-only window, long-standing customers
+    assert f["hour"]["status"] == "partial_day" and f["history_log"]["status"] == "stable"
+    assert not d["retrain_recommended"]
+    f, d = report(hours=30, history=0.0)                  # a full day, all cold-start customers
+    assert f["hour"]["status"] == "critical" and f["history_log"]["status"] == "critical"
+
+
+def test_llm_narrative_request(engine, monkeypatch):
+    from sentinelai import agent
+    sent = {}
+
+    class Resp:
+        def raise_for_status(self): pass
+        def json(self): return {"stop_reason": "end_turn",
+                                "content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "Narrative."}]}
+
+    def post(url, timeout, headers, json):
+        sent.update(headers=headers, json=json); return Resp()
+
+    monkeypatch.setattr(agent.httpx, "post", post)
+    monkeypatch.setattr(engine.settings, "anthropic_api_key", "k")
+    inv = agent.Investigator(engine)
+    assert inv._narrative({}, {}, [], "s") == "Narrative."
+    assert sent["json"]["model"] == "claude-opus-5-5" and sent["json"]["fallbacks"] == "default"
+    assert "thinking" not in sent["json"] and "temperature" not in sent["json"]
+    monkeypatch.setattr(engine.settings, "llm_model", "claude-haiku-4-5")
+    inv._narrative({}, {}, [], "s")
+    assert "fallbacks" not in sent["json"] and "anthropic-beta" not in sent["headers"]

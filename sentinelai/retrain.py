@@ -26,7 +26,7 @@ def feedback_rows(conn):
     rows = conn.execute("SELECT features, label FROM transactions WHERE label IS NOT NULL ORDER BY ts").fetchall()
     if not rows:
         return np.empty((0, len(FEATURES))), np.empty(0, dtype=int)
-    X = np.array([[json.loads(r["features"])[f] for f in FEATURES] for r in rows])
+    X = np.array([[json.loads(r["features"]).get(f, 0.0) for f in FEATURES] for r in rows])   # older rows lack newer features
     return X, np.array([r["label"] for r in rows], dtype=int)
 
 

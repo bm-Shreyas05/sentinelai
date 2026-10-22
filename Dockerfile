@@ -21,4 +21,4 @@ USER sentinel
 ENV SENTINEL_DB_PATH=/app/var/sentinel.db SENTINEL_MODEL_DIR=/app/var/models PYTHONUNBUFFERED=1
 EXPOSE 8000
 # Train on first start if no model is present, then serve the API and console
-CMD ["sh", "-c", "[ -f /app/var/models/current.json ] || python -m sentinelai train; python -m sentinelai serve --port 8000"]
+CMD ["sh", "-c", "[ -f /app/var/models/current.json ] || python -m sentinelai train; exec python -m sentinelai serve --port ${PORT:-8000}"]

@@ -24,10 +24,35 @@ labels, and a champion/challenger gate decides whether a retrained model ships.
 The test period contains only 52 frauds, so treat these as roughly ±0.05. Reproduce with
 `python benchmark/ulb_benchmark.py --csv data/creditcard.csv`.
 
-**Product model on simulated Indian payment events** (250,000 events, 5 fraud scenarios):
-PR-AUC 0.84; block tier 89% precision / 72% recall. Per scenario at the review tier: card testing,
-cloned cards and mule rings 100%; UPI social-engineering scams 78%; account takeover 81%. Scams are
-hardest because the victim pays from their own phone at home.
+**Product model on simulated Indian payment events** (250,000 simulated events, 5 fraud scenarios;
+these are not real-world results). Test slice: 37,501 events, 313 frauds.
+
+| Tier | Precision | Recall | Alerts per 10k payments |
+|---|---|---|---|
+| Review (score ≥ 0.283) | 72% | 87% | 101 |
+| Block (score ≥ 0.508) | 87% | 82% | 79 |
+
+PR-AUC 0.92. Share of fraudulent payments caught, by scenario (test frauds in brackets):
+
+| Scenario | Review tier or above | Block tier |
+|---|---|---|
+| Card testing (150) | 99% | 99% |
+| Cloned card (35) | 100% | 100% |
+| Mule ring (15) | 100% | 100% |
+| Account takeover (37) | 70% | 65% |
+| UPI social-engineering scam (76) | 60% | 45% |
+
+Payee features (first transfer to this payee; how many other accounts pay it) carry most of the gain
+over the earlier model. On the same events without them, the review tier is 45% precision at 86%
+recall with 159 alerts per 10k, and PR-AUC is 0.87. The simulator's payee behaviour (collector
+accounts, rotating scam UPI IDs, popular vendors and shared landlords on the legitimate side) was
+written alongside these features, so treat the gain as evidence the pipeline learns the signal, not
+as a real-world estimate. Scams remain hardest because the victim pays from their own phone at home.
+Scenario counts are small: the 95% intervals are about ±11 points for scams and ±15 for takeover,
+and 100% on 15 mule frauds only shows the true rate is above roughly 80%. The block column is the model's own decision; payments under ₹500 are
+then downgraded to review by the cost layer, so a card-testing burst is reviewed rather than blocked.
+Reproduce with `python benchmark/product_eval.py`
+(writes `benchmark/product_results.json`).
 
 **Latency** (engine, single thread, including features, TreeSHAP, SQLite write and agent investigation):
 p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
@@ -36,18 +61,18 @@ p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
 
 | Capability | Where |
 |---|---|
-| Feature store (17 behavioural features, same code for training and serving, state persisted) | `sentinelai/features.py` |
+| Feature store (19 behavioural features, same code for training and serving, state persisted) | `sentinelai/features.py` |
 | LightGBM model, time-ordered training, threshold selection, versioned registry | `sentinelai/model.py` |
 | Exact TreeSHAP contributions → plain-English "this payment vs normal" reasons | `sentinelai/reasons.py` |
 | Cost-sensitive decisions (small payments are never hard-blocked; overrides are audited) | `sentinelai/engine.py` |
-| Investigation agent with a traced tool chain and optional LLM narrative | `sentinelai/agent.py` |
+| Investigation agent with a traced tool chain and optional LLM narrative (Claude, `SENTINEL_LLM_MODEL`, default `claude-opus-5-5`) | `sentinelai/agent.py` |
 | Clause-level policy retrieval with citations and abstention | `sentinelai/policy.py` |
 | PSI drift monitoring against a reference saved with each model | `sentinelai/drift.py` |
 | Champion/challenger retraining with analyst labels | `sentinelai/retrain.py` |
 | REST API with API keys, rate limiting, validation, webhook batch ingestion | `sentinelai/api.py` |
 | MCP server (8 tools) for Claude Desktop, Claude Code or any MCP client | `sentinelai/mcp_server.py` |
 | Web console (React + Vite + Tailwind): command center, case queue, investigation, agent activity, scoring playground, model & drift, policy assistant, audit log | `web/`, `sentinelai/console.py` |
-| 24 tests: engine regressions, policy retrieval eval, API, console, MCP | `tests/` |
+| 32 tests: engine regressions, drift, payee features, policy retrieval eval, API, console, MCP | `tests/` |
 
 ## Quick start
 
@@ -76,6 +101,13 @@ demo traffic).
 | **Case queue**: priority triage, filters, keyboard navigation (`j`/`k`, `enter`) | **Score a payment**: replay scam, takeover, cloned-card, card-testing and mule scenarios against a real customer |
 
 `Ctrl/⌘ K` opens a command palette (pages, open cases, case numbers); `g` then a letter jumps between pages.
+
+### Deploy
+
+**API on Render.** New → Blueprint → this repo; `render.yaml` builds the Docker image, generates
+`SENTINEL_API_KEYS` (read it from the service's Environment tab) and mounts a 1 GB disk for the
+database and models. Persistent disks need a paid instance; to try it on the free plan, remove the
+`disk` block and set `plan: free` (data then resets on every deploy).
 
 ### Score a payment
 
@@ -114,8 +146,19 @@ an analyst and an agent work the same case queue.
   Replace them with your institution's approved documents.
 - The product model is trained on **simulated** events. Real deployment needs the institution's
   labelled history; metrics will differ.
-- Policy retrieval is lexical (TF-IDF with synonyms). It is precise when confident and says so when
-  it isn't, but it does not understand paraphrases the way an embedding model would.
+- Policy retrieval is lexical (TF-IDF with synonyms). On the 12 questions used to calibrate it,
+  11 are handled correctly (one gets a low-confidence "possible match" instead of abstaining). On 16
+  held-out paraphrases it handles only 6, mostly by hedging or abstaining on questions it should
+  answer. Across both sets every high-confidence answer was correct. It does not understand
+  paraphrases the way an embedding model would.
+- Review-tier precision is about 72% on simulated data, so roughly 3 in 10 review alerts are
+  still false alarms. Payee features need the beneficiary (UPI ID) on each transfer; without it
+  the payee defaults to the merchant and those two features stay at zero.
+- Drift is measured against the training data. Time-of-day features are only compared once the
+  window covers a full day, and customer history only flags a rise in cold-start customers, since
+  it otherwise just tracks how long customers have been with the bank. `python -m sentinelai simulate`
+  and the console first replay ~90,000 events into customer histories (without scoring them), so
+  demo traffic resembles the training population.
 - No customer-facing reply handling (the YES/NO in the SMS), SSO for analysts, or PII encryption at
   rest yet. See `docs/ARCHITECTURE.md` for the roadmap.
 
@@ -125,7 +168,7 @@ an analyst and an agent work the same case queue.
 sentinelai/     core package (engine, features, model, agent, policy, drift, API, MCP)
 web/            web console (React, TypeScript, Vite, Tailwind), served by the API at /
 policies/       Markdown policy documents indexed by clause ID (samples)
-benchmark/      ULB benchmark script and results
+benchmark/      ULB benchmark, product-model evaluation and results
 tests/          pytest suite
 docs/           architecture and model card
 ```

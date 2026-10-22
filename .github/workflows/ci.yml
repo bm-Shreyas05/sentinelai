@@ -1,13 +1,16 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix: { python: ["3.10", "3.12"] }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "${{ matrix.python }}", cache: pip }
       - run: pip install -r requirements.txt pytest
       - run: pytest -q
@@ -25,5 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, web]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: docker build -t sentinelai .
+      # Boot the image the way Render does (PORT set, first start trains the model) and wait for /health
+      - name: Smoke test container
+        run: |
+          docker run -d --name api -e PORT=9000 -p 9000:9000 sentinelai
+          for i in $(seq 1 60); do curl -fsS localhost:9000/health && exit 0; sleep 3; done
+          docker logs api; exit 1

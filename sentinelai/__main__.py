@@ -19,6 +19,9 @@ def main(argv=None):
     t = sub.add_parser("train"); t.add_argument("--events", type=int, default=250_000)
     s = sub.add_parser("simulate"); s.add_argument("-n", type=int, default=2000)
     s.add_argument("--seed", type=int, default=99); s.add_argument("--fraud-rate", type=float, default=0.005)
+    s.add_argument("--users", type=int, default=3000)
+    s.add_argument("--warmup", type=int, default=90_000,
+                   help="events replayed into customer histories (not scored) before scoring starts")
     v = sub.add_parser("serve"); v.add_argument("--host", default="0.0.0.0"); v.add_argument("--port", type=int, default=8000)
     v.add_argument("--demo", action="store_true", help="train if needed, warm up and stream simulated traffic")
     sub.add_parser("mcp")
@@ -35,10 +38,18 @@ def main(argv=None):
     elif a.cmd == "simulate":
         from collections import Counter
         from .engine import SentinelEngine
+        from .features import warm_up
         from .synthetic import Simulator
         logging.getLogger("sentinelai.alerts").setLevel(logging.ERROR)
         eng, c = SentinelEngine(settings), Counter()
-        for e in Simulator(n_users=800, seed=a.seed, fraud_rate=a.fraud_rate).stream(a.n):
+        sim = Simulator(n_users=a.users, seed=a.seed, fraud_rate=a.fraud_rate)
+        stream = sim.stream(a.warmup + a.n)
+        if eng.conn.execute("SELECT 1 FROM user_state LIMIT 1").fetchone():
+            logging.warning("database already has customer state; simulated users and clock will overlap it, "
+                            "so drift figures are not meaningful. Use a fresh SENTINEL_DB_PATH for a clean run.")
+        elif a.warmup:   # same population and history depth as training, so drift compares like with like
+            warm_up(eng.store, (next(stream) for _ in range(a.warmup)))
+        for e in stream:
             e["txn_id"] = f"S{a.seed}-{e['txn_id']}"
             c[eng.score(e, actor="simulator")["decision"]] += 1
         print(json.dumps({"decisions": dict(c), "metrics": eng.live_metrics(10**9)}, indent=2))

@@ -15,6 +15,7 @@ import httpx
 from .reasons import customer_message, inr
 
 log = logging.getLogger("sentinelai.agent")
+FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"}
 
 ACTIONS = {
     "velocity": "Block and reissue the card; review the burst of small payments (card testing).",
@@ -28,6 +29,8 @@ ACTIONS = {
     "new_customer": "Apply new-account limits and verify identity documents.",
     "spend_velocity": "Hold further outgoing payments until the customer confirms; spending is far above normal.",
     "scam_pattern": "Call the customer before release and ask whether anyone told them to make this payment.",
+    "payee": "Confirm the new payee with the customer on a registered channel before release.",
+    "collector": "Escalate to AML: the payee collects from many unrelated accounts; review it for a freeze and STR.",
 }
 
 
@@ -107,12 +110,23 @@ class Investigator:
                   + json.dumps({"summary": summary, "reasons": reasons,
                                 "policy": [{"id": r["id"], "text": r["text"]} for r in refs]}))
         try:
-            r = httpx.post("https://api.anthropic.com/v1/messages", timeout=20,
-                           headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-                           json={"model": self.e.settings.llm_model, "max_tokens": 300,
-                                 "messages": [{"role": "user", "content": prompt}]})
+            # Current models think before answering, so max_tokens leaves room beyond the 3 sentences;
+            # low effort keeps this short summarisation fast. "fallbacks" lets the API retry on
+            # another model if a safety classifier declines the request (only sent where supported).
+            model = self.e.settings.llm_model
+            payload = {"model": model, "max_tokens": 2000, "output_config": {"effort": "low"},
+                       "messages": [{"role": "user", "content": prompt}]}
+            headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+            if model in FALLBACK_MODELS:
+                payload["fallbacks"] = "default"
+                headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
+            r = httpx.post("https://api.anthropic.com/v1/messages", timeout=60, headers=headers, json=payload)
             r.raise_for_status()
-            return "".join(b.get("text", "") for b in r.json()["content"])
+            body = r.json()
+            if body.get("stop_reason") == "refusal":
+                log.warning("LLM declined to write a narrative; using deterministic summary")
+                return None
+            return "".join(b.get("text", "") for b in body["content"] if b.get("type") == "text") or None
         except Exception as exc:
             log.error("LLM narrative failed, using deterministic summary: %s", exc)
             return None
