@@ -22,10 +22,31 @@ labels, and a champion/challenger gate decides whether a retrained model ships.
 The test period contains only 52 frauds, so treat these as roughly ±0.05. Reproduce with
 `python benchmark/ulb_benchmark.py --csv data/creditcard.csv`.
 
-**Product model on simulated Indian payment events** (250,000 events, 5 fraud scenarios):
-PR-AUC 0.84; block tier 89% precision / 72% recall. Per scenario at the review tier: card testing,
-cloned cards and mule rings 100%; UPI social-engineering scams 78%; account takeover 81%. Scams are
-hardest because the victim pays from their own phone at home.
+**Product model on simulated Indian payment events** (250,000 simulated events, 5 fraud scenarios;
+these are not real-world results). Test slice: 37,501 events, 315 frauds.
+
+| Tier | Precision | Recall | Alerts per 10k payments |
+|---|---|---|---|
+| Review (score ≥ 0.110) | 39% | 86% | 187 |
+| Block (score ≥ 0.609) | 89% | 72% | 68 |
+
+PR-AUC 0.84. Share of fraudulent payments caught, by scenario (test frauds in brackets):
+
+| Scenario | Review tier or above | Block tier |
+|---|---|---|
+| Card testing (131) | 100% | 98% |
+| Cloned card (37) | 100% | 100% |
+| Mule ring (18) | 100% | 100% |
+| Account takeover (43) | 77% | 51% |
+| UPI social-engineering scam (86) | 60% | 24% |
+
+Scams are hardest because the victim pays from their own phone at home, and the review tier is
+noisy: about 6 in 10 review alerts are legitimate payments. Scenario counts are small: the 95% intervals
+are about ±10 points for scams and ±13 for takeover, and 100% on 18 mule frauds only shows the true
+rate is above roughly 80%. The block column is the model's own decision; payments under ₹500 are
+then downgraded to review by the cost layer, so a card-testing burst is reviewed rather than blocked.
+Reproduce with `python benchmark/product_eval.py`
+(writes `benchmark/product_results.json`).
 
 **Latency** (engine, single thread, including features, TreeSHAP, SQLite write and agent investigation):
 p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
@@ -38,14 +59,14 @@ p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
 | LightGBM model, time-ordered training, threshold selection, versioned registry | `sentinelai/model.py` |
 | Exact TreeSHAP contributions → plain-English "this payment vs normal" reasons | `sentinelai/reasons.py` |
 | Cost-sensitive decisions (small payments are never hard-blocked; overrides are audited) | `sentinelai/engine.py` |
-| Investigation agent with a traced tool chain and optional LLM narrative | `sentinelai/agent.py` |
+| Investigation agent with a traced tool chain and optional LLM narrative (Claude, `SENTINEL_LLM_MODEL`, default `claude-opus-5-5`) | `sentinelai/agent.py` |
 | Clause-level policy retrieval with citations and abstention | `sentinelai/policy.py` |
 | PSI drift monitoring against a reference saved with each model | `sentinelai/drift.py` |
 | Champion/challenger retraining with analyst labels | `sentinelai/retrain.py` |
 | REST API with API keys, rate limiting, validation, webhook batch ingestion | `sentinelai/api.py` |
 | MCP server (8 tools) for Claude Desktop, Claude Code or any MCP client | `sentinelai/mcp_server.py` |
 | Operations console: live feed, case queue, investigation, monitoring, policy assistant | `dashboard/app.py` |
-| 22 tests: engine regressions, policy retrieval eval, API, MCP | `tests/` |
+| 27 tests: engine regressions, drift, policy retrieval eval, API, MCP | `tests/` |
 
 ## Quick start
 
@@ -54,10 +75,22 @@ pip install -r requirements.txt
 python -m sentinelai train                 # trains and promotes the first model (~15 s)
 streamlit run dashboard/app.py             # console on http://localhost:8501, press ▶ Start
 python -m sentinelai serve                 # API on http://localhost:8000/docs
-pytest -q                                  # 22 tests
+pytest -q                                  # 27 tests
 ```
 
 Or with Docker: `cp .env.example .env && docker compose up --build`.
+
+### Deploy
+
+**Console on Streamlit Community Cloud (free).** At [share.streamlit.io](https://share.streamlit.io),
+create an app from this repo, branch `main`, main file `dashboard/app.py`. `packages.txt` installs
+the OpenMP runtime LightGBM needs. The first boot trains the model (about 20 s). Storage on
+Community Cloud is ephemeral, so the demo database resets when the app restarts.
+
+**API on Render.** New → Blueprint → this repo; `render.yaml` builds the Docker image, generates
+`SENTINEL_API_KEYS` (read it from the service's Environment tab) and mounts a 1 GB disk for the
+database and models. Persistent disks need a paid instance; to try it on the free plan, remove the
+`disk` block and set `plan: free` (data then resets on every deploy).
 
 ### Score a payment
 
@@ -96,8 +129,18 @@ an analyst and an agent work the same case queue.
   Replace them with your institution's approved documents.
 - The product model is trained on **simulated** events. Real deployment needs the institution's
   labelled history; metrics will differ.
-- Policy retrieval is lexical (TF-IDF with synonyms). It is precise when confident and says so when
-  it isn't, but it does not understand paraphrases the way an embedding model would.
+- Policy retrieval is lexical (TF-IDF with synonyms). On the 12 questions used to calibrate it,
+  11 are handled correctly (one gets a low-confidence "possible match" instead of abstaining). On 16
+  held-out paraphrases it handles only 6, mostly by hedging or abstaining on questions it should
+  answer. Across both sets every high-confidence answer was correct. It does not understand
+  paraphrases the way an embedding model would.
+- Review-tier precision is low (about 39% on simulated data), so most review alerts are false
+  alarms that cost analyst time.
+- Drift is measured against the training data. Time-of-day features are only compared once the
+  window covers a full day, and customer history only flags a rise in cold-start customers, since
+  it otherwise just tracks how long customers have been with the bank. `python -m sentinelai simulate`
+  and the console first replay ~90,000 events into customer histories (without scoring them), so
+  demo traffic resembles the training population.
 - No customer-facing reply handling (the YES/NO in the SMS), SSO for analysts, or PII encryption at
   rest yet. See `docs/ARCHITECTURE.md` for the roadmap.
 
@@ -107,7 +150,7 @@ an analyst and an agent work the same case queue.
 sentinelai/     core package (engine, features, model, agent, policy, drift, API, MCP)
 dashboard/      Streamlit operations console
 policies/       Markdown policy documents indexed by clause ID (samples)
-benchmark/      ULB benchmark script and results
+benchmark/      ULB benchmark, product-model evaluation and results
 tests/          pytest suite
 docs/           architecture and model card
 ```

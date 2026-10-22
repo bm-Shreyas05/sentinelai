@@ -43,7 +43,7 @@ SYNONYMS = {
     r"\b(otp|pin)\b": "OTP PIN never share",
     r"\bmules?\b": "mule accounts shared device",
     r"\b(liab\w*)\b": "zero liability",
-    r"\b(refund\w*|reimburs\w*|credit\w*)\b": "shadow-credited",
+    r"\b(refund\w*|reimburs\w*|credit(?!\s+cards?\b)\w*)\b": "shadow-credited",   # not "credit card"
     r"\b(wrong\w*|mistak\w*|incorrect\w*|false alarm\w*)\b": "false positive",
     r"\b(releas\w*|unblock\w*)\b": "released hold",
     r"\b(tell|inform|disclose|notify)\b": "told tipping-off",
