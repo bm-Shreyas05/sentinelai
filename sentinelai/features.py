@@ -145,5 +145,30 @@ class FeatureStore:
             self.conn.commit()
 
 
+def warm_up(store: FeatureStore, events):
+    """Build customer histories from past events without scoring them (demo / backfill).
+
+    State is updated in memory and written to SQLite in one transaction at the end, so replaying
+    tens of thousands of events takes seconds. Without this, simulated demo traffic is all
+    cold-start and the drift monitor rightly reports it as unlike the training data.
+    """
+    conn, n = store.conn, 0
+    try:
+        for e in events:
+            store._state(e["user_id"]); store._device_count(e["device_id"])   # load persisted state
+            store.conn = None
+            store.update(e)                                                     # in memory only
+            store.conn = conn; n += 1
+    finally:
+        store.conn = conn
+    if conn is not None:
+        with conn:
+            conn.executemany("INSERT OR REPLACE INTO user_state(user_id, state) VALUES (?,?)",
+                             [(u, json.dumps(st)) for u, st in store._users.items()])
+            conn.executemany("INSERT OR IGNORE INTO device_users(device_id, user_id) VALUES (?,?)",
+                             [(d, u) for d, us in store._device_users.items() for u in us])
+    return n
+
+
 def to_vector(f: dict):
     return [float(f[k]) for k in FEATURES]

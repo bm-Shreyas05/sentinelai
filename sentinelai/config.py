@@ -30,7 +30,7 @@ class Settings:
     alert_webhook_url: str = field(default_factory=lambda: _env("ALERT_WEBHOOK_URL", ""))
     # Optional LLM narrative for investigations (deterministic summary is used when unset)
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY", ""))
-    llm_model: str = field(default_factory=lambda: _env("SENTINEL_LLM_MODEL", "claude-sonnet-5"))
+    llm_model: str = field(default_factory=lambda: _env("SENTINEL_LLM_MODEL", "claude-opus-5-5"))
 
 
 def get_settings() -> Settings:
