@@ -23,27 +23,31 @@ The test period contains only 52 frauds, so treat these as roughly ±0.05. Repro
 `python benchmark/ulb_benchmark.py --csv data/creditcard.csv`.
 
 **Product model on simulated Indian payment events** (250,000 simulated events, 5 fraud scenarios;
-these are not real-world results). Test slice: 37,501 events, 315 frauds.
+these are not real-world results). Test slice: 37,501 events, 313 frauds.
 
 | Tier | Precision | Recall | Alerts per 10k payments |
 |---|---|---|---|
-| Review (score ≥ 0.110) | 39% | 86% | 187 |
-| Block (score ≥ 0.609) | 89% | 72% | 68 |
+| Review (score ≥ 0.283) | 72% | 87% | 101 |
+| Block (score ≥ 0.508) | 87% | 82% | 79 |
 
-PR-AUC 0.84. Share of fraudulent payments caught, by scenario (test frauds in brackets):
+PR-AUC 0.92. Share of fraudulent payments caught, by scenario (test frauds in brackets):
 
 | Scenario | Review tier or above | Block tier |
 |---|---|---|
-| Card testing (131) | 100% | 98% |
-| Cloned card (37) | 100% | 100% |
-| Mule ring (18) | 100% | 100% |
-| Account takeover (43) | 77% | 51% |
-| UPI social-engineering scam (86) | 60% | 24% |
+| Card testing (150) | 99% | 99% |
+| Cloned card (35) | 100% | 100% |
+| Mule ring (15) | 100% | 100% |
+| Account takeover (37) | 70% | 65% |
+| UPI social-engineering scam (76) | 60% | 45% |
 
-Scams are hardest because the victim pays from their own phone at home, and the review tier is
-noisy: about 6 in 10 review alerts are legitimate payments. Scenario counts are small: the 95% intervals
-are about ±10 points for scams and ±13 for takeover, and 100% on 18 mule frauds only shows the true
-rate is above roughly 80%. The block column is the model's own decision; payments under ₹500 are
+Payee features (first transfer to this payee; how many other accounts pay it) carry most of the gain
+over the earlier model. On the same events without them, the review tier is 45% precision at 86%
+recall with 159 alerts per 10k, and PR-AUC is 0.87. The simulator's payee behaviour (collector
+accounts, rotating scam UPI IDs, popular vendors and shared landlords on the legitimate side) was
+written alongside these features, so treat the gain as evidence the pipeline learns the signal, not
+as a real-world estimate. Scams remain hardest because the victim pays from their own phone at home.
+Scenario counts are small: the 95% intervals are about ±11 points for scams and ±15 for takeover,
+and 100% on 15 mule frauds only shows the true rate is above roughly 80%. The block column is the model's own decision; payments under ₹500 are
 then downgraded to review by the cost layer, so a card-testing burst is reviewed rather than blocked.
 Reproduce with `python benchmark/product_eval.py`
 (writes `benchmark/product_results.json`).
@@ -55,7 +59,7 @@ p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
 
 | Capability | Where |
 |---|---|
-| Feature store (17 behavioural features, same code for training and serving, state persisted) | `sentinelai/features.py` |
+| Feature store (19 behavioural features, same code for training and serving, state persisted) | `sentinelai/features.py` |
 | LightGBM model, time-ordered training, threshold selection, versioned registry | `sentinelai/model.py` |
 | Exact TreeSHAP contributions → plain-English "this payment vs normal" reasons | `sentinelai/reasons.py` |
 | Cost-sensitive decisions (small payments are never hard-blocked; overrides are audited) | `sentinelai/engine.py` |
@@ -134,8 +138,9 @@ an analyst and an agent work the same case queue.
   held-out paraphrases it handles only 6, mostly by hedging or abstaining on questions it should
   answer. Across both sets every high-confidence answer was correct. It does not understand
   paraphrases the way an embedding model would.
-- Review-tier precision is low (about 39% on simulated data), so most review alerts are false
-  alarms that cost analyst time.
+- Review-tier precision is about 72% on simulated data, so roughly 3 in 10 review alerts are
+  still false alarms. Payee features need the beneficiary (UPI ID) on each transfer; without it
+  the payee defaults to the merchant and those two features stay at zero.
 - Drift is measured against the training data. Time-of-day features are only compared once the
   window covers a full day, and customer history only flags a rise in cold-start customers, since
   it otherwise just tracks how long customers have been with the bank. `python -m sentinelai simulate`

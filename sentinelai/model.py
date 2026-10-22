@@ -27,7 +27,7 @@ class ModelBundle:
     notes: str = ""
 
     def predict(self, feats: dict):
-        x = np.array([to_vector(feats)])
+        x = np.array([[float(feats.get(k, 0.0)) for k in self.features]])   # bundles keep their own feature list
         p = float(self.booster.predict(x)[0])
         contrib = self.booster.predict(x, pred_contrib=True)[0]   # exact TreeSHAP, log-odds space
         contributions = {f: float(c) for f, c in zip(self.features, contrib[:-1])}

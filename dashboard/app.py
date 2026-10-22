@@ -5,7 +5,7 @@
 Live panels use st.fragment(run_every=...), so each refreshes on its own timer without
 rerunning the page: KPIs stay live on every page and form inputs are never interrupted.
 """
-import json, sys, time
+import html, json, sys, time
 from pathlib import Path
 
 import pandas as pd
@@ -34,6 +34,16 @@ html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
 .muted { color:#8b949e; font-size:.86rem; }
 .banner { padding:1rem 1.2rem; border:1px solid var(--c); background:#12161c; margin-bottom:1rem; }
 .mono { font-family:'IBM Plex Mono',monospace; }
+.trace { margin:.2rem 0 .4rem 0; }
+.step { display:grid; grid-template-columns:1.7rem 1fr auto; gap:.15rem .6rem; padding:.3rem 0 .3rem .2rem;
+        border-left:2px solid #232a33; margin-left:.6rem; }
+.step .n { margin-left:-1.05rem; width:1.5rem; height:1.5rem; border-radius:50%; background:#1c232c; color:#8b949e;
+           font:600 .72rem 'IBM Plex Mono',monospace; display:flex; align-items:center; justify-content:center; }
+.step .t { font:600 .84rem 'IBM Plex Mono',monospace; color:#e6edf3; }
+.step .ms { font:.74rem 'IBM Plex Mono',monospace; color:#6e7681; }
+.step .io { grid-column:2 / 4; font:.76rem 'IBM Plex Mono',monospace; color:#8b949e; word-break:break-word; }
+.step .io b { color:#6e7681; font-weight:400; }
+.step.notify .n { background:#3a1d1b; color:#ff5a4f; } .step.decide .n { background:#2d2412; color:#f0a500; }
 </style>""", unsafe_allow_html=True)
 
 DECISION_COLOR = {"BLOCK": "#ff5a4f", "REVIEW": "#f0a500", "ALLOW": "#3fb950"}
@@ -65,8 +75,10 @@ eng, traffic = get_engine()
 with st.sidebar:
     st.markdown("### 🛡 SentinelAI")
     st.caption(f"Model {eng.bundle.version}")
-    page = st.radio("Go to", ["Operations", "Case queue", "Investigation", "Monitoring & model",
-                              "Policy assistant", "Connect (API & MCP)"], label_visibility="collapsed")
+    if "goto" in st.session_state:            # set by open_case; applied before the radio is drawn
+        st.session_state.page = st.session_state.pop("goto")
+    page = st.radio("Go to", ["Operations", "Case queue", "Investigation", "Agent activity", "Monitoring & model",
+                              "Policy assistant", "Connect (API & MCP)"], key="page", label_visibility="collapsed")
     st.divider()
     st.markdown("**Demo traffic**")
     c1, c2 = st.columns(2)
@@ -103,6 +115,29 @@ def kpi_strip():
 
 def open_case(case_id):
     st.session_state.case_id = case_id
+    st.session_state.goto = "Investigation"
+
+
+def _brief(v, limit=150):
+    if isinstance(v, dict):
+        v = ", ".join(f"{k}={_brief(x, 40)}" for k, x in v.items())
+    elif isinstance(v, list):
+        v = ", ".join(_brief(x, 40) for x in v) or "none"
+    v = str(v)
+    return v if len(v) <= limit else v[:limit - 1] + "…"
+
+
+def render_trace(trace):
+    """The investigation agent's tool calls as a step timeline: tool, latency, input and output."""
+    steps = []
+    for s in trace:
+        kind = "notify" if s["tool"].startswith("notify_") else "decide" if s["tool"] == "assess_priority" else ""
+        ms = "" if s["ms"] is None else f"{s['ms']:.2f} ms"
+        steps.append(f'<div class="step {kind}"><div class="n">{s["step"]}</div>'
+                     f'<div class="t">{html.escape(s["tool"])}</div><div class="ms">{ms}</div>'
+                     f'<div class="io"><b>in</b> {html.escape(_brief(s["input"]))}<br>'
+                     f'<b>out</b> {html.escape(_brief(s["output"]))}</div></div>')
+    st.markdown(f'<div class="trace">{"".join(steps)}</div>', unsafe_allow_html=True)
 
 
 traffic_pump()
@@ -175,7 +210,7 @@ def page_investigation():
         <div style="font-size:1.05rem;margin-top:.2rem">{head}</div>
         <div class="muted mono">Case {cid} · {t['txn_id']} · {t['user_id']} · model {t['model_version']} · status {c['status']}</div></div>
         <div style="text-align:right"><div class="mono" style="font-size:1.6rem;font-weight:600">{inr(t['amount'])}</div>
-        <div class="muted">{t['merchant']} · {t['city']} · {t['channel'].upper()}</div></div>
+        <div class="muted">{t.get('payee') if t['category'] == 'p2p_transfer' and t.get('payee') else t['merchant']} · {t['city']} · {t['channel'].upper()}</div></div>
       </div></div>""", unsafe_allow_html=True)
 
     if r.get("policy_override"):
@@ -209,9 +244,7 @@ def page_investigation():
         st.subheader("Customer message")
         st.code(customer_message(t, t["decision"], r), language=None, wrap_lines=True)
         st.subheader("Agent trace")
-        st.dataframe(pd.DataFrame([{"step": s["step"], "tool": s["tool"], "ms": s["ms"],
-                                    "output": str(s["output"])[:60]} for s in c["trace"]]),
-                     hide_index=True, width="stretch")
+        render_trace(c["trace"])
         if c["status"] == "open":
             st.subheader("Resolve")
             with st.form(f"resolve{cid}"):
@@ -233,8 +266,41 @@ def page_investigation():
     h = pd.DataFrame(eng.user_history(t["user_id"], 15))
     h["time"] = pd.to_datetime(h.ts, unit="s").dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata").dt.strftime("%d %b %H:%M")
     h["amount"] = h.amount.map(inr)
-    st.dataframe(h[["time", "txn_id", "amount", "category", "city", "device_id", "score", "decision", "label"]],
+    st.dataframe(h[["time", "txn_id", "amount", "category", "payee", "city", "device_id", "score", "decision", "label"]],
                  hide_index=True, width="stretch")
+
+
+def page_agent():
+    st.caption("Every REVIEW or BLOCK opens a case and the investigation agent works it: transaction, customer "
+               "history, policy lookup, priority, notifications. Each step is shown as it was recorded.")
+    actors = [r[0] for r in eng.conn.execute("SELECT DISTINCT actor FROM audit_log WHERE action='case_opened'")]
+    triggers = st.segmented_control("Triggered by", ["all", *sorted(a for a in actors if a)], default="all")
+
+    @st.fragment(run_every=2.0)
+    def activity():
+        hour = eng.recent_investigations(1000, since=time.time() - 3600)
+        a, b, c, d = st.columns(4)
+        a.metric("Investigations, last hour", len(hour))
+        b.metric("Critical or high", sum(r["priority"] in ("critical", "high") for r in hour))
+        c.metric("Notifications sent", sum(len(r["notified"]) for r in hour))
+        ms = sorted(r["agent_ms"] for r in hour)
+        d.metric("Agent time, median", f"{ms[len(ms) // 2]:.1f} ms" if ms else "n/a")
+
+        feed = [r for r in eng.recent_investigations(40) if triggers in (None, "all") or r["actor"] == triggers][:12]
+        if not feed:
+            st.info("No investigations yet. Start demo traffic, score a payment through the API, "
+                    "or have an MCP client call score_transaction."); return
+        for i, r in enumerate(feed):
+            when = time.strftime("%H:%M:%S", time.localtime(r["created_at"]))
+            title = (f"{PRIORITY_ICON[r['priority']]} Case {r['case_id']} · {r['decision']} · {inr(r['amount'])} · "
+                     f"{r['city']} · {r['priority']} · {len(r['trace'])} steps in {r['agent_ms']:.1f} ms · "
+                     f"{when} via {r['actor'] or 'unknown'}")
+            with st.expander(title, expanded=(i == 0)):
+                render_trace(r["trace"])
+                if st.button("Open case", key=f"a{r['case_id']}"):   # inside a fragment: rerun the whole app
+                    open_case(r["case_id"]); st.rerun()
+
+    activity()
 
 
 def page_monitoring():
@@ -323,5 +389,6 @@ def page_connect():
 
 
 {"Operations": page_operations, "Case queue": page_cases, "Investigation": page_investigation,
+ "Agent activity": page_agent,
  "Monitoring & model": page_monitoring, "Policy assistant": page_policy,
  "Connect (API & MCP)": page_connect}[page]()

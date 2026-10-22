@@ -33,12 +33,13 @@ def drift_report(conn, bundle, window=2000, min_rows=200):
                         "ORDER BY created_at DESC LIMIT ?", (bundle.version, window)).fetchall()
     if len(rows) < min_rows:
         return {"ready": False, "rows": len(rows), "needed": min_rows}
-    X = np.array([[json.loads(r["features"])[f] for f in FEATURES] for r in rows])
+    names = getattr(bundle, "features", FEATURES)         # the serving model's own feature list
+    X = np.array([[json.loads(r["features"]).get(f, 0.0) for f in names] for r in rows])
     scores = np.array([r["score"] for r in rows])
     ts = np.array([r["ts"] for r in rows])
     span_h = float(ts.max() - ts.min()) / 3600
     feats = []
-    for i, name in enumerate(FEATURES):
+    for i, name in enumerate(names):
         ref = bundle.reference["features"][name]
         if name == "history_log" and "cold_start_share" in bundle.reference:
             ref_share, share = bundle.reference["cold_start_share"], float((X[:, i] < COLD_START_LOG).mean())
