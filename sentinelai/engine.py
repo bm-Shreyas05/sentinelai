@@ -1,4 +1,4 @@
-"""SentinelEngine: the single entry point used by the API, dashboard, MCP server and CLI."""
+"""SentinelEngine: the single entry point used by the API, web console, MCP server and CLI."""
 import json, threading, time, uuid
 
 from . import db
@@ -24,7 +24,7 @@ class SentinelEngine:
         self.policy = PolicyIndex(self.settings.policy_dir)
         self.alerts = Dispatcher(self.settings, self.conn)
         self.agent = Investigator(self)
-        self._lock = threading.RLock()   # API, dashboard sessions and MCP may share one engine
+        self._lock = threading.RLock()   # API, demo traffic and MCP may share one engine
 
     def reload_model(self):
         self.bundle = self.registry.load()

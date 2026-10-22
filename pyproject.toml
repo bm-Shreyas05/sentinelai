@@ -16,8 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.9"]
-dashboard = ["streamlit>=1.37"]
-dev = ["pytest>=8", "mcp>=1.9", "streamlit>=1.37"]
+dev = ["pytest>=8", "mcp>=1.9"]
 
 [project.scripts]
 sentinelai = "sentinelai.__main__:main"
