@@ -16,6 +16,7 @@ from sentinelai.config import get_settings            # noqa: E402
 from sentinelai.engine import SentinelEngine          # noqa: E402
 from sentinelai.model import Registry                 # noqa: E402
 from sentinelai.reasons import customer_message, inr  # noqa: E402
+from sentinelai.features import warm_up               # noqa: E402
 from sentinelai.synthetic import Simulator            # noqa: E402
 
 st.set_page_config(page_title="SentinelAI", page_icon="🛡", layout="wide")
@@ -57,11 +58,13 @@ def get_engine():
         from sentinelai.retrain import train_initial
         train_initial(s)
     eng = SentinelEngine(s)
-    sim = Simulator(n_users=1500, seed=int(time.time()) % 1000, fraud_rate=0.006)
+    sim = Simulator(n_users=3000, seed=int(time.time()) % 1000, fraud_rate=0.006)
     stream = sim.stream(10**9)
     if eng.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0:
         import logging; logging.getLogger("sentinelai.alerts").setLevel(logging.ERROR)
-        for _ in range(6000):                     # warm up customer histories so the demo isn't all cold-start
+        # Build customer histories as deep as the training data's, so drift compares like with like
+        warm_up(eng.store, (next(stream) for _ in range(90_000)))
+        for _ in range(6000):                     # then score some traffic so the queue and charts aren't empty
             e = next(stream); e["txn_id"] = f"B-{e['txn_id']}"; eng.score(e, actor="bootstrap")
     return eng, {"stream": stream, "running": False, "rate": 5}
 
@@ -79,8 +82,8 @@ with st.sidebar:
     st.divider()
     st.markdown("**Demo traffic**")
     c1, c2 = st.columns(2)
-    if c1.button("▶ Start", use_container_width=True): traffic["running"] = True
-    if c2.button("⏸ Stop", use_container_width=True): traffic["running"] = False
+    if c1.button("▶ Start", width="stretch"): traffic["running"] = True
+    if c2.button("⏸ Stop", width="stretch"): traffic["running"] = False
     traffic["rate"] = st.slider("Transactions per second", 1, 30, traffic["rate"])
     st.caption("Traffic is simulated. In production, transactions arrive through "
                "`POST /v1/transactions` or the webhook endpoint.")
@@ -154,7 +157,7 @@ def page_operations():
         df["amount"] = df.amount.map(inr)
         df["category"] = df.category.str.replace("_", " ")
         st.dataframe(df[["time", "txn_id", "user_id", "amount", "category", "city", "channel", "score", "decision"]],
-                     hide_index=True, use_container_width=True, height=560,
+                     hide_index=True, width="stretch", height=560,
                      column_config={"score": st.column_config.ProgressColumn("Risk", min_value=0, max_value=1, format="%.3f")})
 
     @st.fragment(run_every=5.0)
@@ -175,7 +178,7 @@ def page_operations():
         st.subheader("Most urgent cases")
         for c in eng.list_cases("open", 6):
             st.button(f"{PRIORITY_ICON[c['priority']]} {inr(c['amount'])} · {c['city']} · {c['decision']}",
-                      key=f"u{c['case_id']}", on_click=open_case, args=(c["case_id"],), use_container_width=True)
+                      key=f"u{c['case_id']}", on_click=open_case, args=(c["case_id"],), width="stretch")
         st.caption("Opening a case takes you to Investigation.")
 
 
@@ -248,8 +251,8 @@ def page_investigation():
                 analyst = st.text_input("Analyst", value=st.session_state.get("analyst", ""))
                 notes = st.text_area("Notes", placeholder="e.g. customer confirmed on call")
                 f1, f2 = st.columns(2)
-                fraud = f1.form_submit_button("Confirm fraud", type="primary", use_container_width=True)
-                legit = f2.form_submit_button("False positive", use_container_width=True)
+                fraud = f1.form_submit_button("Confirm fraud", type="primary", width="stretch")
+                legit = f2.form_submit_button("False positive", width="stretch")
             if (fraud or legit) and not analyst.strip():
                 st.error("Enter the analyst name for the audit trail.")
             elif fraud or legit:
@@ -264,7 +267,7 @@ def page_investigation():
     h["time"] = pd.to_datetime(h.ts, unit="s").dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata").dt.strftime("%d %b %H:%M")
     h["amount"] = h.amount.map(inr)
     st.dataframe(h[["time", "txn_id", "amount", "category", "payee", "city", "device_id", "score", "decision", "label"]],
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")
 
 
 def page_agent():
@@ -312,7 +315,9 @@ def page_monitoring():
         c.metric("Retraining", "recommended" if d["retrain_recommended"] else "not needed")
         df = pd.DataFrame(d["features"]).set_index("feature")
         st.bar_chart(df["psi"], horizontal=True, height=420, color="#58a6ff")
-        st.caption("PSI < 0.10 stable · 0.10–0.25 warning · > 0.25 critical (policy FRF-3.1).")
+        st.caption("PSI < 0.10 stable · 0.10–0.25 warning · > 0.25 critical (policy FRF-3.1). "
+                   f"Window covers {d['window_hours']} h; time-of-day features are only compared once it "
+                   "covers a full day, and history_log only flags a rise in cold-start customers.")
 
     st.subheader("Model versions")
     rows = [{"version": v["version"], "PR-AUC": v["metrics"]["pr_auc"],
@@ -320,7 +325,7 @@ def page_monitoring():
              "review recall": v["metrics"]["review"]["recall"],
              "decision": v["metrics"].get("comparison", {}).get("decision", "initial"),
              "serving": "✅" if v["version"] == eng.bundle.version else ""} for v in eng.registry.versions()]
-    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     labels = eng.conn.execute("SELECT COUNT(*) FROM transactions WHERE label IS NOT NULL").fetchone()[0]
     st.caption(f"{labels} analyst label(s) available for retraining.")
     if st.button("Run champion/challenger retraining"):
@@ -338,7 +343,7 @@ def page_monitoring():
         st.dataframe(pd.DataFrame([{"model": k, "PR-AUC": v["pr_auc"], "ROC-AUC": v["roc_auc"],
                                     "block precision": v["block"]["precision"], "block recall": v["block"]["recall"],
                                     "review recall": v["review"]["recall"]} for k, v in b["models"].items()]),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
         st.caption(f"{b['rows']:,} real transactions, {b['test_frauds']} frauds in the test period.")
 
 
@@ -349,7 +354,7 @@ def page_policy():
              "Is the customer refunded while we investigate?", "What PSI triggers retraining?"]
     cols = st.columns(len(quick))
     for col, q in zip(cols, quick):
-        if col.button(q, use_container_width=True):
+        if col.button(q, width="stretch"):
             st.session_state.policy_q = q
     with st.form("ask", clear_on_submit=False):
         q = st.text_input("Question", value=st.session_state.get("policy_q", ""))
