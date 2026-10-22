@@ -187,6 +187,8 @@ def warm_up(store: FeatureStore, events):
     try:
         for e in events:
             store._state(e["user_id"]); store._device_count(e["device_id"])   # load persisted state
+            if _personal_payee(e):
+                store._payee_senders_of(_personal_payee(e))
             store.conn = None
             store.update(e)                                                     # in memory only
             store.conn = conn; n += 1
@@ -198,6 +200,8 @@ def warm_up(store: FeatureStore, events):
                              [(u, json.dumps(st)) for u, st in store._users.items()])
             conn.executemany("INSERT OR IGNORE INTO device_users(device_id, user_id) VALUES (?,?)",
                              [(d, u) for d, us in store._device_users.items() for u in us])
+            conn.executemany("INSERT OR IGNORE INTO payee_users(payee, user_id) VALUES (?,?)",
+                             [(p, u) for p, us in store._payee_senders.items() for u in us])
     return n
 
 

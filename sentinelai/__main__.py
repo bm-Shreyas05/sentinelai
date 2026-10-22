@@ -2,7 +2,8 @@
 
   python -m sentinelai train            train and promote the initial model
   python -m sentinelai simulate -n 2000  push simulated traffic through the engine
-  python -m sentinelai serve            run the REST API (uvicorn)
+  python -m sentinelai serve            run the REST API and web console (uvicorn)
+  python -m sentinelai serve --demo     same, plus a trained model and live simulated traffic
   python -m sentinelai mcp              run the MCP server over stdio (for Claude Desktop etc.)
   python -m sentinelai retrain          champion/challenger retrain with analyst labels
   python -m sentinelai drift            print the drift report
@@ -22,6 +23,7 @@ def main(argv=None):
     s.add_argument("--warmup", type=int, default=90_000,
                    help="events replayed into customer histories (not scored) before scoring starts")
     v = sub.add_parser("serve"); v.add_argument("--host", default="0.0.0.0"); v.add_argument("--port", type=int, default=8000)
+    v.add_argument("--demo", action="store_true", help="train if needed, warm up and stream simulated traffic")
     sub.add_parser("mcp")
     r = sub.add_parser("retrain"); r.add_argument("--events", type=int, default=250_000); r.add_argument("--force", action="store_true")
     sub.add_parser("drift")
@@ -52,7 +54,13 @@ def main(argv=None):
             c[eng.score(e, actor="simulator")["decision"]] += 1
         print(json.dumps({"decisions": dict(c), "metrics": eng.live_metrics(10**9)}, indent=2))
     elif a.cmd == "serve":
-        import uvicorn
+        import os, uvicorn
+        if a.demo:
+            from .model import Registry
+            if Registry(settings.model_dir).current_version() is None:
+                from .retrain import train_initial
+                train_initial(settings)
+            os.environ["SENTINEL_DEMO"] = "1"
         uvicorn.run("sentinelai.api:app", host=a.host, port=a.port)
     elif a.cmd == "mcp":
         from .mcp_server import main as mcp_main
