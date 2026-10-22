@@ -9,6 +9,8 @@ and for anything flagged an investigation agent opens a case, pulls the customer
 relevant policy clause, drafts the customer SMS and alerts analysts. Analyst verdicts become training
 labels, and a champion/challenger gate decides whether a retrained model ships.
 
+![SentinelAI console: command center](docs/screenshots/01-command-center.png)
+
 ## Measured results
 
 **Public benchmark: ULB credit-card fraud** (284,807 real transactions, 492 frauds). Time-ordered
@@ -44,20 +46,36 @@ p50 2.5 ms, p99 8.2 ms, ~380 transactions/s. Through HTTP: p99 8.7 ms.
 | Champion/challenger retraining with analyst labels | `sentinelai/retrain.py` |
 | REST API with API keys, rate limiting, validation, webhook batch ingestion | `sentinelai/api.py` |
 | MCP server (8 tools) for Claude Desktop, Claude Code or any MCP client | `sentinelai/mcp_server.py` |
-| Operations console: live feed, case queue, investigation, monitoring, policy assistant | `dashboard/app.py` |
-| 22 tests: engine regressions, policy retrieval eval, API, MCP | `tests/` |
+| Web console (React + Vite + Tailwind): command center, case queue, investigation, agent activity, scoring playground, model & drift, policy assistant, audit log | `web/`, `sentinelai/console.py` |
+| 24 tests: engine regressions, policy retrieval eval, API, console, MCP | `tests/` |
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-python -m sentinelai train                 # trains and promotes the first model (~15 s)
-streamlit run dashboard/app.py             # console on http://localhost:8501, press ▶ Start
-python -m sentinelai serve                 # API on http://localhost:8000/docs
-pytest -q                                  # 22 tests
+(cd web && npm ci && npm run build)        # builds the console into web/dist (Node 20+)
+python -m sentinelai serve --demo          # trains if needed, streams simulated payments
+                                           # console on http://localhost:8000, API docs at /docs
+pytest -q
 ```
 
-Or with Docker: `cp .env.example .env && docker compose up --build`.
+Sign in with an API key from `SENTINEL_API_KEYS` (local default `dev-key-change-me`). Without
+`--demo`, `serve` runs the same API and console with no simulated traffic. To work on the console,
+run `npm run dev` in `web/`: Vite serves it on :5173 with hot reload and proxies `/v1` to :8000.
+
+Or with Docker: `cp .env.example .env && docker compose up --build` (set `SENTINEL_DEMO=1` for live
+demo traffic).
+
+### The console
+
+| | |
+|---|---|
+| ![Investigation](docs/screenshots/03-investigation.png) | ![Agent activity](docs/screenshots/04-agent-activity.png) |
+| **Investigation**: verdict, risk gauge, "this payment vs normal" evidence, TreeSHAP chart, agent trace with replay, cited policy, customer SMS, one-click resolution | **Agent activity**: every investigation as it runs, with its tool calls, latency and who triggered it (demo, API, MCP) |
+| ![Case queue](docs/screenshots/02-case-queue.png) | ![Score a payment](docs/screenshots/05-score-a-payment.png) |
+| **Case queue**: priority triage, filters, keyboard navigation (`j`/`k`, `enter`) | **Score a payment**: replay scam, takeover, cloned-card, card-testing and mule scenarios against a real customer |
+
+`Ctrl/⌘ K` opens a command palette (pages, open cases, case numbers); `g` then a letter jumps between pages.
 
 ### Score a payment
 
@@ -105,7 +123,7 @@ an analyst and an agent work the same case queue.
 
 ```
 sentinelai/     core package (engine, features, model, agent, policy, drift, API, MCP)
-dashboard/      Streamlit operations console
+web/            web console (React, TypeScript, Vite, Tailwind), served by the API at /
 policies/       Markdown policy documents indexed by clause ID (samples)
 benchmark/      ULB benchmark script and results
 tests/          pytest suite

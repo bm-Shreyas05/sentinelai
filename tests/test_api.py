@@ -67,3 +67,33 @@ def test_mcp_tools_registered(engine):
     assert {"score_transaction", "get_case", "lookup_policy", "check_drift", "resolve_case"} <= names
     out = mcp_server.list_open_cases(5)                  # every tool returns one JSON object
     assert isinstance(out, dict) and "cases" in out
+
+
+def test_console_routes(client, engine):
+    assert client.get("/v1/console/overview").status_code == 401
+    o = client.get("/v1/console/overview", headers=H).json()
+    assert o["metrics"]["transactions"] > 0 and len(o["score_histogram"]) == 20 and o["cities"]
+    feed = client.get("/v1/console/feed?limit=5", headers=H).json()
+    assert len(feed) == 5 and "reasons" not in feed[0]
+    inv = client.get("/v1/console/investigations?limit=3", headers=H).json()
+    assert inv["items"] and inv["items"][0]["trace"] and "warmup" in inv["actors"]
+    cid = inv["items"][0]["case_id"]
+    c = client.get(f"/v1/console/cases/{cid}", headers=H).json()
+    assert c["customer_message"].startswith("SentinelAI:") and c["history"] and c["profile"]["transactions"]
+    assert client.get("/v1/console/cases/999999", headers=H).status_code == 404
+    m = client.get("/v1/console/model", headers=H).json()
+    assert m["current"] == engine.bundle.version and m["versions"]
+    assert client.get("/v1/console/connect", headers=H).json()["mcp"]["mcpServers"]["sentinelai"]
+
+
+def test_console_demo_traffic(client, engine):
+    import time
+    before = engine.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    assert client.post("/v1/console/traffic", json={"running": True, "rate": 20}, headers=H).json()["running"]
+    for _ in range(40):                    # reads share the connection with the traffic thread
+        assert client.get("/v1/cases?limit=50", headers=H).status_code == 200
+        assert client.get("/v1/console/feed?limit=20", headers=H).status_code == 200
+    assert not client.post("/v1/console/traffic", json={"running": False}, headers=H).json()["running"]
+    time.sleep(1.1)
+    assert engine.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] > before
+    assert client.post("/v1/console/traffic", json={"rate": 0}, headers=H).status_code == 422

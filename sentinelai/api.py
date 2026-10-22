@@ -2,19 +2,33 @@
 
 Auth: every /v1 route requires an `X-API-Key` header matching SENTINEL_API_KEYS.
 Rate limiting: token bucket per API key (SENTINEL_RATE_LIMIT_PER_MIN).
-Interactive docs at /docs.
+Interactive docs at /docs. The web console (web/, built to web/dist) is served at /.
 """
-import secrets, threading, time
+import logging, os, secrets, threading, time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
+from .console import ROOT, DemoTraffic, build_router
 from .engine import SentinelEngine
 
 ENGINE: Optional[SentinelEngine] = None
+TRAFFIC: Optional[DemoTraffic] = None
+WEB_DIST = Path(os.environ.get("SENTINEL_WEB_DIST", ROOT / "web" / "dist"))
+
+
+def _start_demo():
+    """SENTINEL_DEMO=1: warm up customer histories, then keep simulated traffic flowing."""
+    try:
+        traffic().warm_up()
+        traffic().set(running=True)
+    except Exception:
+        logging.getLogger("sentinelai.console").exception("demo start failed")
 
 
 @asynccontextmanager
@@ -22,7 +36,11 @@ async def lifespan(app):
     global ENGINE
     if ENGINE is None:
         ENGINE = SentinelEngine()
+    if os.environ.get("SENTINEL_DEMO") == "1":
+        threading.Thread(target=_start_demo, name="demo-start", daemon=True).start()
     yield
+    if TRAFFIC is not None:
+        TRAFFIC.set(running=False)
 
 
 app = FastAPI(title="SentinelAI", version=__version__, lifespan=lifespan,
@@ -51,6 +69,13 @@ def engine() -> SentinelEngine:
     if ENGINE is None:
         raise HTTPException(503, "engine not initialised")
     return ENGINE
+
+
+def traffic() -> DemoTraffic:
+    global TRAFFIC
+    if TRAFFIC is None or TRAFFIC.eng is not engine():
+        TRAFFIC = DemoTraffic(engine())
+    return TRAFFIC
 
 
 def require_key(x_api_key: str = Header(default="")):
@@ -178,3 +203,20 @@ def models():
 @app.post("/v1/models/reload", dependencies=[Depends(require_key)])
 def reload_model():
     return {"current": engine().reload_model()}
+
+
+app.include_router(build_router(engine, traffic), dependencies=[Depends(require_key)])
+
+
+# ── web console: static build with client-side routing ───────────────────────
+@app.get("/{path:path}", include_in_schema=False)
+def web_console(path: str):
+    if path.startswith(("v1/", "docs", "openapi.json", "health")):
+        raise HTTPException(404)
+    index = WEB_DIST / "index.html"
+    if not index.exists():
+        raise HTTPException(404, "web console not built: cd web && npm ci && npm run build")
+    f = (WEB_DIST / path).resolve()
+    if path and f.is_file() and f.is_relative_to(WEB_DIST.resolve()):
+        return FileResponse(f)
+    return FileResponse(index)

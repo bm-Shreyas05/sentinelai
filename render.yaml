@@ -1,5 +1,4 @@
-# One-click deploy of the API on Render (render.com). The dashboard deploys separately on
-# Streamlit Community Cloud (entry point: dashboard/app.py); it trains its own model on first boot.
+# One-click deploy on Render (render.com): one service serves the API and the web console at /.
 services:
   - type: web
     name: sentinelai-api
