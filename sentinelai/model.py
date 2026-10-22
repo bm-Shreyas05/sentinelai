@@ -27,7 +27,7 @@ class ModelBundle:
     notes: str = ""
 
     def predict(self, feats: dict):
-        x = np.array([to_vector(feats)])
+        x = np.array([[float(feats.get(k, 0.0)) for k in self.features]])   # bundles keep their own feature list
         p = float(self.booster.predict(x)[0])
         contrib = self.booster.predict(x, pred_contrib=True)[0]   # exact TreeSHAP, log-odds space
         contributions = {f: float(c) for f, c in zip(self.features, contrib[:-1])}
@@ -84,6 +84,8 @@ def _reference(X, scores, bins=10):
             edges = np.array([col.min() - 0.5, (col.min() + col.max()) / 2, col.max() + 0.5])
         counts = np.histogram(col, bins=edges)[0]
         ref["features"][name] = {"edges": edges.tolist(), "props": (counts / counts.sum()).tolist()}
+    # share of payments from customers with fewer than 3 prior payments (see drift.COLD_START_LOG)
+    ref["cold_start_share"] = float((X[:, FEATURES.index("history_log")] < np.log1p(3)).mean())
     edges = np.linspace(0, 1, 21)
     counts = np.histogram(scores, bins=edges)[0]
     ref["score"] = {"edges": edges.tolist(), "props": (counts / counts.sum()).tolist()}

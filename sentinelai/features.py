@@ -27,6 +27,8 @@ FEATURES = [
     "merchant_risk",         # category-level risk prior
     "is_new_category",       # merchant category never used by this user
     "channel_code",          # 0 card, 1 UPI, 2 netbanking, 3 wallet
+    "is_new_payee",          # transfer to an individual this user has never paid (0 for merchant payments)
+    "payee_fan_in_log",      # log(1 + distinct other accounts that have paid this individual payee)
 ]
 
 MERCHANT_RISK = {
@@ -42,7 +44,12 @@ IST_OFFSET = 5.5 * 3600
 
 def _new_state():
     return {"ema": DEFAULT_EMA, "n": 0, "recent": [], "devices": [], "cities": {},
-            "categories": [], "last_ts": None, "last_city": None}
+            "categories": [], "payees": [], "last_ts": None, "last_city": None}
+
+
+def _personal_payee(txn):
+    """Payee features apply to transfers to individuals; merchants are covered by category features."""
+    return txn.get("payee") if txn.get("category") == "p2p_transfer" else None
 
 
 class FeatureStore:
@@ -50,6 +57,7 @@ class FeatureStore:
         self.conn = conn
         self._users = {}
         self._device_users = {}
+        self._payee_senders = {}
 
     # ── state access ──────────────────────────────────────────────────────────
     def _state(self, user_id):
@@ -73,6 +81,15 @@ class FeatureStore:
             self._device_users[device_id] = users
         return self._device_users[device_id]
 
+    def _payee_senders_of(self, payee):
+        if payee not in self._payee_senders:
+            users = set()
+            if self.conn is not None:
+                users = {r["user_id"] for r in self.conn.execute(
+                    "SELECT user_id FROM payee_users WHERE payee=?", (payee,))}
+            self._payee_senders[payee] = users
+        return self._payee_senders[payee]
+
     # ── feature computation ───────────────────────────────────────────────────
     def compute(self, txn: dict):
         """Return (feature_dict, context_dict). Does not mutate state."""
@@ -91,6 +108,9 @@ class FeatureStore:
         n_dev_users = len(device_users | {txn["user_id"]})
         hour = int(((ts + IST_OFFSET) % 86400) // 3600)
         category = txn.get("category", "online_shopping")
+        payee = _personal_payee(txn)
+        known_payees = st.setdefault("payees", [])
+        payee_others = len(self._payee_senders_of(payee) - {txn["user_id"]}) if payee else 0
 
         f = {
             "amount_log": math.log1p(amount),
@@ -110,6 +130,8 @@ class FeatureStore:
             "merchant_risk": MERCHANT_RISK.get(category, 1.0),
             "is_new_category": 0 if category in st["categories"] else 1,
             "channel_code": CHANNELS.get(txn.get("channel", "card"), 0),
+            "is_new_payee": 1 if payee and payee not in known_payees else 0,
+            "payee_fan_in_log": math.log1p(payee_others),
         }
         # Context used by the explanation layer ("this transaction vs normal for this user")
         ctx = {
@@ -119,6 +141,7 @@ class FeatureStore:
             "previous_city": st["last_city"],
             "minutes_since_last": round(dt / 60, 1) if dt is not None else None,
             "known_categories": st["categories"][:5],
+            "known_payees": len(known_payees), "payee_other_senders": payee_others,
         }
         return f, ctx
 
@@ -135,14 +158,51 @@ class FeatureStore:
         cat = txn.get("category", "online_shopping")
         if cat not in st["categories"]:
             st["categories"] = (st["categories"] + [cat])[-20:]
+        payee = _personal_payee(txn)
+        if payee and payee not in st.setdefault("payees", []):
+            st["payees"] = (st["payees"] + [payee])[-50:]
         st["last_ts"], st["last_city"] = ts, txn["city"]
         self._device_count(txn["device_id"]).add(txn["user_id"])
+        if payee:
+            self._payee_senders_of(payee).add(txn["user_id"])
         if self.conn is not None:
             self.conn.execute("INSERT OR REPLACE INTO user_state(user_id, state) VALUES (?,?)",
                               (txn["user_id"], json.dumps(st)))
             self.conn.execute("INSERT OR IGNORE INTO device_users(device_id, user_id) VALUES (?,?)",
                               (txn["device_id"], txn["user_id"]))
+            if payee:
+                self.conn.execute("INSERT OR IGNORE INTO payee_users(payee, user_id) VALUES (?,?)",
+                                  (payee, txn["user_id"]))
             self.conn.commit()
+
+
+def warm_up(store: FeatureStore, events):
+    """Build customer histories from past events without scoring them (demo / backfill).
+
+    State is updated in memory and written to SQLite in one transaction at the end, so replaying
+    tens of thousands of events takes seconds. Without this, simulated demo traffic is all
+    cold-start and the drift monitor rightly reports it as unlike the training data.
+    """
+    conn, n = store.conn, 0
+    try:
+        for e in events:
+            store._state(e["user_id"]); store._device_count(e["device_id"])   # load persisted state
+            if _personal_payee(e):
+                store._payee_senders_of(_personal_payee(e))
+            store.conn = None
+            store.update(e)                                                     # in memory only
+            store.conn = conn; n += 1
+    finally:
+        store.conn = conn
+    if conn is not None:
+        with conn:
+            conn.executemany("INSERT OR REPLACE INTO user_state(user_id, state) VALUES (?,?)",
+                             [(u, json.dumps(st)) for u, st in store._users.items()])
+            conn.executemany("INSERT OR IGNORE INTO device_users(device_id, user_id) VALUES (?,?)",
+                             [(d, u) for d, us in store._device_users.items() for u in us])
+            conn.executemany("INSERT OR IGNORE INTO payee_users(payee, user_id) VALUES (?,?)",
+                             [(p, u) for p, us in store._payee_senders.items() for u in us])
+    return n
 
 
 def to_vector(f: dict):

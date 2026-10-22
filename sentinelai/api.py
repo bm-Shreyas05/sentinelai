@@ -98,6 +98,8 @@ class TransactionIn(BaseModel):
     device_id: str = Field(..., min_length=1, max_length=128)
     category: str = Field("online_shopping", max_length=32)
     merchant: Optional[str] = Field(None, max_length=128)
+    payee: Optional[str] = Field(None, max_length=128,
+                                 description="Beneficiary, e.g. the UPI ID for a p2p_transfer; defaults to merchant")
     channel: Literal["card", "upi", "netbanking", "wallet"] = "card"
     ts: Optional[float] = Field(None, description="Unix epoch seconds; defaults to now")
 

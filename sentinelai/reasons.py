@@ -53,6 +53,15 @@ def _risk_reason(name, f, ctx, txn):
     if name in ("dist_from_home_km", "is_new_city") and (f["dist_from_home_km"] > 300 or f["is_new_city"]):
         return ("location", "Unfamiliar location", f"{txn['city']} ({int(f['dist_from_home_km'])} km from home)",
                 f"{ctx['home_city']}", "The customer has not transacted here before.")
+    if name == "payee_fan_in_log" and ctx.get("payee_other_senders", 0) >= 5:
+        return ("collector", "Payee receives money from many accounts",
+                f"{ctx['payee_other_senders']} other accounts have paid {txn.get('payee')}",
+                "A personal account is paid by a few people",
+                "Accounts that collect from many unrelated people are typical of scammers and mule rings.")
+    if name == "is_new_payee" and f["is_new_payee"]:
+        return ("payee", "First transfer to this payee", f"New payee {txn.get('payee')}",
+                f"{ctx.get('known_payees', 0)} payee(s) paid before",
+                "Scam victims are told to pay a new UPI ID; most genuine transfers go to people paid before.")
     if name in ("merchant_risk", "is_new_category") and txn.get("category") == "p2p_transfer" \
             and f["amount_ratio"] >= 1.5:
         return ("scam_pattern", "Large transfer to an individual", inr(txn["amount"]), f"{inr(typ)} typical",
@@ -81,6 +90,7 @@ _REASSURING = {
     "amount_ratio": "Normal amount", "amount_log": "Normal amount", "tx_count_5min": "Normal pace",
     "tx_count_1h": "Normal pace", "travel_speed_kmh": "Plausible travel", "merchant_risk": "Low-risk merchant",
     "device_user_count": "Device not shared", "history_log": "Established customer",
+    "is_new_payee": "Payee paid before",
 }
 
 
@@ -111,10 +121,12 @@ def customer_message(txn, decision, reasons):
     """Short, jargon-free notification suitable for SMS or app push."""
     lead = {"BLOCK": "We have paused", "REVIEW": "We are checking"}.get(decision, "We noticed")
     # customers recognise concrete facts first: amount, device, place, speed — not merchant taxonomy
-    order = ["amount", "scam_pattern", "device", "travel", "location", "velocity", "spend_velocity",
+    order = ["amount", "scam_pattern", "payee", "collector", "device", "travel", "location", "velocity", "spend_velocity",
              "shared_device", "time", "merchant", "new_customer"]
     risk = sorted(reasons["risk"], key=lambda r: order.index(r["code"]) if r["code"] in order else 99)
     why = " and ".join(r["title"].lower() for r in risk[:2]) if risk else "unusual activity"
-    return (f"SentinelAI: {lead} a payment of {inr(txn['amount'])} at {txn.get('merchant', 'a merchant')} "
+    to = (f"to {txn['payee']}" if txn.get("category") == "p2p_transfer" and txn.get("payee")
+          else f"at {txn.get('merchant', 'a merchant')}")
+    return (f"SentinelAI: {lead} a payment of {inr(txn['amount'])} {to} "
             f"in {txn['city']} because of {why}. If this was you, reply YES. If not, reply NO "
             f"and your card/UPI will be frozen. Never share your OTP with anyone.")

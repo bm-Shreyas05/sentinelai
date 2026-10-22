@@ -3,7 +3,7 @@ services:
   - type: web
     name: sentinelai-api
     runtime: docker
-    plan: starter
+    plan: starter        # persistent disks need a paid plan; drop `disk` to use the free plan
     healthCheckPath: /health
     envVars:
       - key: SENTINEL_API_KEYS

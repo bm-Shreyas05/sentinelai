@@ -1,0 +1,65 @@
+{
+  "events": 250000,
+  "users": 3000,
+  "seed": 11,
+  "thresholds": {
+    "review": 0.28282,
+    "block": 0.50752
+  },
+  "metrics": {
+    "pr_auc": 0.9231,
+    "roc_auc": 0.9988,
+    "review": {
+      "threshold": 0.28282,
+      "precision": 0.7188,
+      "recall": 0.8658,
+      "alerts_per_10k": 100.5
+    },
+    "block": {
+      "threshold": 0.50752,
+      "precision": 0.8682,
+      "recall": 0.8211,
+      "alerts_per_10k": 78.9
+    },
+    "n_train": 175002,
+    "n_test": 37501,
+    "test_frauds": 313,
+    "best_iteration": 246
+  },
+  "per_scenario": {
+    "card_testing": {
+      "test_frauds": 150,
+      "caught_review": 0.993,
+      "caught_block": 0.993
+    },
+    "cloned_card": {
+      "test_frauds": 35,
+      "caught_review": 1.0,
+      "caught_block": 1.0
+    },
+    "mule": {
+      "test_frauds": 15,
+      "caught_review": 1.0,
+      "caught_block": 1.0
+    },
+    "takeover": {
+      "test_frauds": 37,
+      "caught_review": 0.703,
+      "caught_block": 0.649
+    },
+    "upi_scam": {
+      "test_frauds": 76,
+      "caught_review": 0.605,
+      "caught_block": 0.447
+    }
+  },
+  "legit_flag_rate_review": 0.00285,
+  "test_scenario_counts": {
+    "legit": 37188,
+    "upi_scam": 76,
+    "card_testing": 150,
+    "mule": 15,
+    "cloned_card": 35,
+    "takeover": 37
+  }
+}

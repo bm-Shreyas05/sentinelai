@@ -9,7 +9,7 @@ from pathlib import Path
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS transactions (
     txn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, ts REAL NOT NULL, amount REAL NOT NULL,
-    merchant TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT,
+    merchant TEXT, payee TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT,
     score REAL, decision TEXT, model_version TEXT,
     features TEXT, contributions TEXT, reasons TEXT,
     label INTEGER,              -- NULL until an analyst resolves it: 1 fraud, 0 legitimate
@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE TABLE IF NOT EXISTS user_state (user_id TEXT PRIMARY KEY, state TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS device_users (
     device_id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (device_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS payee_users (
+    payee TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (payee, user_id)
 );
 """
 
@@ -80,6 +83,21 @@ class SharedConnection:
         with self._lock:
             self._conn.executescript(sql)
 
+    def executemany(self, sql, seq):
+        with self._lock:
+            return _Result(self._conn.executemany(sql, seq))
+
+    def __enter__(self):                          # `with conn:` = one transaction, held under the lock
+        self._lock.acquire()
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            return self._conn.__exit__(*exc)
+        finally:
+            self._lock.release()
+
     def commit(self):
         with self._lock:
             self._conn.commit()
@@ -98,6 +116,9 @@ def connect(path) -> SharedConnection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "payee" not in cols:                       # databases created before payee support
+        conn.execute("ALTER TABLE transactions ADD COLUMN payee TEXT"); conn.commit()
     return SharedConnection(conn)
 
 
