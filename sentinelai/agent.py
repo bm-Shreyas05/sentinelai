@@ -29,6 +29,8 @@ ACTIONS = {
     "new_customer": "Apply new-account limits and verify identity documents.",
     "spend_velocity": "Hold further outgoing payments until the customer confirms; spending is far above normal.",
     "scam_pattern": "Call the customer before release and ask whether anyone told them to make this payment.",
+    "payee": "Confirm the new payee with the customer on a registered channel before release.",
+    "collector": "Escalate to AML: the payee collects from many unrelated accounts; review it for a freeze and STR.",
 }
 
 

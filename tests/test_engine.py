@@ -26,6 +26,18 @@ def test_takeover_pattern_is_blocked_with_full_case(engine, known_user):
     assert case["summary"]["actions"]
 
 
+def test_recent_investigations_feed(engine, known_user):
+    far = "Kolkata" if known_user["home"] != "Kolkata" else "Mumbai"
+    r = engine.score(_txn(known_user, amount=known_user["typical"] * 30, city=far, device_id="feed-dev",
+                          category="electronics", ts=known_user["last_ts"] + 9500), actor="mcp")
+    feed = engine.recent_investigations(5)
+    top = feed[0]
+    assert top["case_id"] == r["case_id"] and top["actor"] == "mcp"
+    assert top["trace"][0]["tool"] == "get_transaction" and top["agent_ms"] >= 0
+    assert "notify_customer" in top["notified"]
+    assert all(f["case_id"] < top["case_id"] for f in feed[1:])
+
+
 def test_small_payment_on_new_device_is_never_blocked(engine, known_user):
     """Regression: the old heuristic scored a ₹64 payment on a new phone as 99% / BLOCK."""
     r = engine.score(_txn(known_user, amount=64, device_id="new-phone-xyz", category="atm", channel="card",
@@ -85,3 +97,16 @@ def test_drift_report_and_metrics(engine):
     assert d["ready"] and len(d["features"]) == len(engine.bundle.features)
     m = engine.live_metrics(10**9)
     assert m["transactions"] > 4000 and 0 < m["alert_rate"] < 0.2
+
+
+def test_transfer_to_collector_payee_is_flagged_with_payee_reason(engine, known_user):
+    """A scam-style transfer from the victim's own phone at home: only the payee gives it away."""
+    ts = known_user["last_ts"] + 20000
+    for i in range(8):                            # the collector has been paid by many other accounts
+        engine.store.update({"user_id": f"COLL-SENDER{i}", "amount": 9000, "city": "Delhi", "device_id": f"cs{i}",
+                             "category": "p2p_transfer", "payee": "collector-test@upi", "ts": ts - 600 + i})
+    r = engine.score(_txn(known_user, amount=known_user["typical"] * 4, category="p2p_transfer",
+                          payee="collector-test@upi", ts=ts))
+    assert r["decision"] != "ALLOW"
+    assert {"payee", "collector"} & {x["code"] for x in r["reasons"]["risk"]}
+    assert engine.get_transaction(r["txn_id"])["payee"] == "collector-test@upi"

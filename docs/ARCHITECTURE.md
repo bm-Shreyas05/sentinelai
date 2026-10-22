@@ -27,7 +27,7 @@ flowchart LR
 ## Request path (one payment)
 
 1. Validate input (Pydantic) and authenticate the API key; token-bucket rate limit per key.
-2. Feature store computes 17 features from the customer's persisted state (typical spend,
+2. Feature store computes 19 features from the customer's persisted state (typical spend,
    devices, cities, recent activity) and records context for explanations.
 3. LightGBM returns a probability and exact TreeSHAP contributions in one call.
 4. Thresholds from the model card map probability to ALLOW / REVIEW / BLOCK; the cost layer
@@ -47,7 +47,7 @@ without losing more than 1 point of review recall. The previous model stays in t
 
 | Area | Next step |
 |---|---|
-| Data | Train on the pilot bank's labelled history; add merchant-level and beneficiary-level features |
+| Data | Train on the pilot bank's labelled history; add merchant-level features and real beneficiary data for the payee features |
 | Retrieval | Embedding retrieval for paraphrased policy questions, keeping clause citations |
 | Security | Analyst SSO, role-based access, PII encryption at rest, key rotation |
 | Scale | PostgreSQL, Redis-backed feature state, horizontal API workers |

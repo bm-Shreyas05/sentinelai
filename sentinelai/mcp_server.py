@@ -26,13 +26,17 @@ def eng():
 
 @mcp.tool()
 def score_transaction(user_id: str, amount: float, city: str, device_id: str,
-                      category: str = "online_shopping", channel: str = "upi", merchant: str = "") -> dict:
-    """Score a payment in INR. Returns fraud probability, decision (ALLOW/REVIEW/BLOCK),
-    plain-English reasons, and a case_id when a case was opened and investigated."""
+                      category: str = "online_shopping", channel: str = "upi", merchant: str = "",
+                      payee: str = "") -> dict:
+    """Score a payment in INR. For a p2p_transfer pass the beneficiary's UPI ID as payee. Returns fraud
+    probability, decision (ALLOW/REVIEW/BLOCK), plain-English reasons, and a case_id when a case was
+    opened and investigated."""
     txn = {"user_id": user_id, "amount": amount, "city": city, "device_id": device_id,
            "category": category, "channel": channel}
     if merchant:
         txn["merchant"] = merchant
+    if payee:
+        txn["payee"] = payee
     return eng().score(txn, actor="mcp")
 
 

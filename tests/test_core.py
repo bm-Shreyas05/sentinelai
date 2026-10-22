@@ -41,6 +41,33 @@ def test_psi_detects_shift_and_not_noise():
     assert psi(edges, props, rng.normal(1.5, 1, 2000)) > 0.25
 
 
+def test_payee_features_and_old_database_migration(tmp_path):
+    import sqlite3
+    from sentinelai import db
+    old = tmp_path / "old.db"                    # a database created before payee support
+    c = sqlite3.connect(old)
+    c.execute("CREATE TABLE transactions (txn_id TEXT PRIMARY KEY, user_id TEXT, ts REAL, amount REAL, "
+              "merchant TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT, score REAL, decision TEXT, "
+              "model_version TEXT, features TEXT, contributions TEXT, reasons TEXT, label INTEGER, "
+              "sim_label INTEGER, created_at REAL)")
+    c.commit(); c.close()
+    conn = db.connect(old)
+    assert "payee" in {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
+
+    fs = FeatureStore(conn)
+    p2p = lambda u, payee, ts: {"user_id": u, "amount": 2000, "city": "Pune", "device_id": f"d{u}",
+                                "category": "p2p_transfer", "payee": payee, "ts": ts}
+    for i in range(6):
+        fs.update(p2p(f"U{i}", "COL1@upi", 1000 + i))
+    f, ctx = FeatureStore(conn).compute(p2p("U9", "COL1@upi", 2000))     # state survives a restart
+    assert f["is_new_payee"] == 1 and ctx["payee_other_senders"] == 6
+    f, ctx = fs.compute(p2p("U0", "COL1@upi", 2000))                     # paid before; others excludes self
+    assert f["is_new_payee"] == 0 and ctx["payee_other_senders"] == 5
+    shop = {**p2p("U0", "", 2000), "category": "grocery", "payee": "grocery-PUN"}
+    f, _ = fs.compute(shop)                                             # merchants: payee features off
+    assert f["is_new_payee"] == 0 and f["payee_fan_in_log"] == 0
+
+
 def test_warm_up_persists_histories_without_scoring(tmp_path):
     from sentinelai import db
     from sentinelai.features import warm_up
