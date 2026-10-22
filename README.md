@@ -59,6 +59,18 @@ pytest -q                                  # 22 tests
 
 Or with Docker: `cp .env.example .env && docker compose up --build`.
 
+### Deploy
+
+**Console on Streamlit Community Cloud (free).** At [share.streamlit.io](https://share.streamlit.io),
+create an app from this repo, branch `main`, main file `dashboard/app.py`. `packages.txt` installs
+the OpenMP runtime LightGBM needs. The first boot trains the model (about 20 s). Storage on
+Community Cloud is ephemeral, so the demo database resets when the app restarts.
+
+**API on Render.** New → Blueprint → this repo; `render.yaml` builds the Docker image, generates
+`SENTINEL_API_KEYS` (read it from the service's Environment tab) and mounts a 1 GB disk for the
+database and models. Persistent disks need a paid instance; to try it on the free plan, remove the
+`disk` block and set `plan: free` (data then resets on every deploy).
+
 ### Score a payment
 
 ```bash
