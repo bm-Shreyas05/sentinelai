@@ -9,7 +9,7 @@ from pathlib import Path
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS transactions (
     txn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, ts REAL NOT NULL, amount REAL NOT NULL,
-    merchant TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT,
+    merchant TEXT, payee TEXT, category TEXT, city TEXT, device_id TEXT, channel TEXT,
     score REAL, decision TEXT, model_version TEXT,
     features TEXT, contributions TEXT, reasons TEXT,
     label INTEGER,              -- NULL until an analyst resolves it: 1 fraud, 0 legitimate
@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS user_state (user_id TEXT PRIMARY KEY, state TEXT NOT 
 CREATE TABLE IF NOT EXISTS device_users (
     device_id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (device_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS payee_users (
+    payee TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (payee, user_id)
+);
 """
 
 _lock = threading.Lock()
@@ -57,6 +60,9 @@ def connect(path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "payee" not in cols:                       # databases created before payee support
+        conn.execute("ALTER TABLE transactions ADD COLUMN payee TEXT"); conn.commit()
     return conn
 
 

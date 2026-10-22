@@ -42,6 +42,7 @@ class SentinelEngine:
         txn.setdefault("ts", time.time())
         txn.setdefault("category", "online_shopping"); txn.setdefault("channel", "card")
         txn.setdefault("merchant", txn["category"])
+        txn.setdefault("payee", txn["merchant"])
         sim_label = txn.pop("label", None); txn.pop("scenario", None)
 
         with self._lock:   # feature-store reads and writes for one user must not interleave
@@ -57,10 +58,10 @@ class SentinelEngine:
                 reasons["policy_override"] = (f"Model recommended BLOCK; downgraded to REVIEW because the amount is "
                                               f"below the ₹{self.settings.min_block_amount:,.0f} hard-block minimum.")
             self.conn.execute(
-                "INSERT INTO transactions(txn_id,user_id,ts,amount,merchant,category,city,device_id,channel,"
+                "INSERT INTO transactions(txn_id,user_id,ts,amount,merchant,payee,category,city,device_id,channel,"
                 "score,decision,model_version,features,contributions,reasons,sim_label,created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (txn["txn_id"], txn["user_id"], txn["ts"], txn["amount"], txn["merchant"], txn["category"],
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (txn["txn_id"], txn["user_id"], txn["ts"], txn["amount"], txn["merchant"], txn["payee"], txn["category"],
                  txn["city"], txn["device_id"], txn["channel"], p, decision, self.bundle.version,
                  json.dumps(feats), json.dumps(contrib), json.dumps(reasons), sim_label, time.time()))
             self.store.update(txn)
@@ -101,7 +102,7 @@ class SentinelEngine:
         return t
 
     def user_history(self, user_id, limit=20):
-        rows = self.conn.execute("SELECT txn_id, ts, amount, merchant, category, city, device_id, score, "
+        rows = self.conn.execute("SELECT txn_id, ts, amount, merchant, payee, category, city, device_id, score, "
                                  "decision, label FROM transactions WHERE user_id=? ORDER BY ts DESC LIMIT ?",
                                  (user_id, limit)).fetchall()
         return [dict(r) for r in rows]
