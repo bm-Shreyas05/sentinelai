@@ -16,6 +16,7 @@ from sentinelai.config import get_settings            # noqa: E402
 from sentinelai.engine import SentinelEngine          # noqa: E402
 from sentinelai.model import Registry                 # noqa: E402
 from sentinelai.reasons import customer_message, inr  # noqa: E402
+from sentinelai.features import warm_up               # noqa: E402
 from sentinelai.synthetic import Simulator            # noqa: E402
 
 st.set_page_config(page_title="SentinelAI", page_icon="🛡", layout="wide")
@@ -47,11 +48,13 @@ def get_engine():
         from sentinelai.retrain import train_initial
         train_initial(s)
     eng = SentinelEngine(s)
-    sim = Simulator(n_users=1500, seed=int(time.time()) % 1000, fraud_rate=0.006)
+    sim = Simulator(n_users=3000, seed=int(time.time()) % 1000, fraud_rate=0.006)
     stream = sim.stream(10**9)
     if eng.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0:
         import logging; logging.getLogger("sentinelai.alerts").setLevel(logging.ERROR)
-        for _ in range(6000):                     # warm up customer histories so the demo isn't all cold-start
+        # Build customer histories as deep as the training data's, so drift compares like with like
+        warm_up(eng.store, (next(stream) for _ in range(90_000)))
+        for _ in range(6000):                     # then score some traffic so the queue and charts aren't empty
             e = next(stream); e["txn_id"] = f"B-{e['txn_id']}"; eng.score(e, actor="bootstrap")
     return eng, {"stream": stream, "running": False, "rate": 5}
 
@@ -246,7 +249,9 @@ def page_monitoring():
         c.metric("Retraining", "recommended" if d["retrain_recommended"] else "not needed")
         df = pd.DataFrame(d["features"]).set_index("feature")
         st.bar_chart(df["psi"], horizontal=True, height=420, color="#58a6ff")
-        st.caption("PSI < 0.10 stable · 0.10–0.25 warning · > 0.25 critical (policy FRF-3.1).")
+        st.caption("PSI < 0.10 stable · 0.10–0.25 warning · > 0.25 critical (policy FRF-3.1). "
+                   f"Window covers {d['window_hours']} h; time-of-day features are only compared once it "
+                   "covers a full day, and history_log only flags a rise in cold-start customers.")
 
     st.subheader("Model versions")
     rows = [{"version": v["version"], "PR-AUC": v["metrics"]["pr_auc"],
