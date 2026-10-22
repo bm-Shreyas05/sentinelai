@@ -1,7 +1,7 @@
 """SQLite persistence: transactions, cases, alerts, audit log and feature-store state.
 
 SQLite in WAL mode handles a single-node deployment comfortably (thousands of writes/sec).
-Every function takes an explicit connection so the API, dashboard and MCP server can share one file.
+Every function takes an explicit connection so the API, console and MCP server can share one file.
 """
 import json, sqlite3, threading, time
 from pathlib import Path
@@ -51,7 +51,63 @@ CREATE TABLE IF NOT EXISTS payee_users (
 _lock = threading.Lock()
 
 
-def connect(path) -> sqlite3.Connection:
+class _Result:
+    """A fully fetched cursor, so no sqlite3 object is touched outside the connection lock."""
+
+    def __init__(self, cur):
+        self.rows, self.lastrowid, self.rowcount = cur.fetchall(), cur.lastrowid, cur.rowcount
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return self.rows
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class SharedConnection:
+    """One SQLite connection shared by API worker threads, demo traffic and the MCP server.
+    sqlite3 objects are not safe to use from several threads at once ("bad parameter or other
+    API misuse"), so every statement runs and is fetched under one lock."""
+
+    def __init__(self, conn):
+        self._conn, self._lock = conn, threading.RLock()
+
+    def execute(self, sql, params=()):
+        with self._lock:
+            return _Result(self._conn.execute(sql, params))
+
+    def executescript(self, sql):
+        with self._lock:
+            self._conn.executescript(sql)
+
+    def executemany(self, sql, seq):
+        with self._lock:
+            return _Result(self._conn.executemany(sql, seq))
+
+    def __enter__(self):                          # `with conn:` = one transaction, held under the lock
+        self._lock.acquire()
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            return self._conn.__exit__(*exc)
+        finally:
+            self._lock.release()
+
+    def commit(self):
+        with self._lock:
+            self._conn.commit()
+
+    def close(self):
+        with self._lock:
+            self._conn.close()
+
+
+def connect(path) -> SharedConnection:
     path = Path(path)
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +119,7 @@ def connect(path) -> sqlite3.Connection:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(transactions)")}
     if "payee" not in cols:                       # databases created before payee support
         conn.execute("ALTER TABLE transactions ADD COLUMN payee TEXT"); conn.commit()
-    return conn
+    return SharedConnection(conn)
 
 
 def audit(conn, actor: str, action: str, detail: dict):

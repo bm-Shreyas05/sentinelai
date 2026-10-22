@@ -1,4 +1,5 @@
-# docker compose up --build   → API on :8000 (docs at /docs), dashboard on :8501
+# docker compose up --build   → console on http://localhost:8000, API docs at /docs
+# Set SENTINEL_DEMO=1 in .env to stream simulated payments into the console.
 services:
   api:
     build: .
@@ -10,13 +11,5 @@ services:
       interval: 15s
       retries: 10
       start_period: 90s
-  dashboard:
-    build: .
-    env_file: [.env]
-    command: ["streamlit", "run", "dashboard/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
-    ports: ["8501:8501"]
-    volumes: [sentinel-data:/app/var]
-    depends_on:
-      api: { condition: service_healthy }
 volumes:
   sentinel-data:
