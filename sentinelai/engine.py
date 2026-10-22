@@ -123,6 +123,24 @@ class SentinelEngine:
         c["transaction"] = self.get_transaction(c["txn_id"])
         return c
 
+    def recent_investigations(self, limit=20, since=None):
+        """Latest agent investigations, newest first, with the trace, the transaction headline and who
+        triggered it (api, demo, mcp, ...) from the audit log."""
+        q = ("SELECT c.case_id, c.txn_id, c.priority, c.status, c.trace, c.created_at, t.amount, t.user_id, "
+             "t.city, t.merchant, t.channel, t.decision, t.score, "
+             "(SELECT a.actor FROM audit_log a WHERE a.action='case_opened' "
+             " AND json_extract(a.detail, '$.case_id')=c.case_id LIMIT 1) AS actor "
+             "FROM cases c JOIN transactions t USING(txn_id) WHERE c.trace IS NOT NULL ")
+        args = []
+        if since is not None:
+            q += "AND c.created_at>=? "; args.append(since)
+        rows = [db.row_to_dict(r) for r in self.conn.execute(q + "ORDER BY c.case_id DESC LIMIT ?",
+                                                             (*args, limit)).fetchall()]
+        for r in rows:
+            r["agent_ms"] = round(sum(s["ms"] or 0 for s in r["trace"]), 2)
+            r["notified"] = [s["tool"] for s in r["trace"] if s["tool"].startswith("notify_")]
+        return rows
+
     def resolve_case(self, case_id, is_fraud: bool, analyst: str, notes: str = ""):
         with self._lock:
             return self._resolve_locked(case_id, is_fraud, analyst, notes)

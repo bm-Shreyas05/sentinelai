@@ -26,6 +26,18 @@ def test_takeover_pattern_is_blocked_with_full_case(engine, known_user):
     assert case["summary"]["actions"]
 
 
+def test_recent_investigations_feed(engine, known_user):
+    far = "Kolkata" if known_user["home"] != "Kolkata" else "Mumbai"
+    r = engine.score(_txn(known_user, amount=known_user["typical"] * 30, city=far, device_id="feed-dev",
+                          category="electronics", ts=known_user["last_ts"] + 9500), actor="mcp")
+    feed = engine.recent_investigations(5)
+    top = feed[0]
+    assert top["case_id"] == r["case_id"] and top["actor"] == "mcp"
+    assert top["trace"][0]["tool"] == "get_transaction" and top["agent_ms"] >= 0
+    assert "notify_customer" in top["notified"]
+    assert all(f["case_id"] < top["case_id"] for f in feed[1:])
+
+
 def test_small_payment_on_new_device_is_never_blocked(engine, known_user):
     """Regression: the old heuristic scored a ₹64 payment on a new phone as 99% / BLOCK."""
     r = engine.score(_txn(known_user, amount=64, device_id="new-phone-xyz", category="atm", channel="card",
