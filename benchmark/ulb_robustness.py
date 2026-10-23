@@ -5,8 +5,9 @@ The headline benchmark (ulb_benchmark.py) is one split, one seed and a test peri
 This script asks four questions of the same data and protocol (time order, thresholds frozen on
 validation):
 
-  1. Product hyperparameters: does sentinelai.model.PARAMS (what the product actually trains with)
-     score like the tuned benchmark recipe?
+  1. Hyperparameters: how much worse were the product's previous PARAMS (before 2026-10-23 the
+     product trained with these, not the benchmark recipe)? sentinelai.model.PARAMS now matches
+     the benchmark recipe.
   2. Uncertainty: bootstrap 95% intervals on test PR-AUC and on each tier's precision / recall.
   3. Seed stability: spread of test PR-AUC across LightGBM seeds.
   4. Time stability: rolling-origin folds (train on everything before, validate on the next 10%,
@@ -31,8 +32,8 @@ from ulb_benchmark import at_threshold, pick_thresholds
 BENCH_PARAMS = dict(objective="binary", learning_rate=0.03, num_leaves=31, min_child_samples=40,
                     feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1,
                     scale_pos_weight=5.0, lambda_l2=1.0, verbose=-1, seed=42)
-# Copied from sentinelai/model.py so the script runs without importing the package's DB/feature code
-PRODUCT_PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=31, min_child_samples=30,
+# What sentinelai/model.py used before it switched to BENCH_PARAMS
+PREVIOUS_PRODUCT_PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=31, min_child_samples=30,
                       feature_fraction=0.9, bagging_fraction=0.8, bagging_freq=1,
                       scale_pos_weight=3.0, lambda_l2=1.0, verbose=-1, seed=42)
 FEATS = [f"V{i}" for i in range(1, 29)] + ["amount_log", "hour"]
@@ -93,7 +94,7 @@ def main(csv, out_dir):
     # 1 + 2. both parameter sets on the headline split, with bootstrap intervals
     res["headline_split"] = {}
     for name, params, kw in (("benchmark_recipe", BENCH_PARAMS, {}),
-                             ("product_params", PRODUCT_PARAMS, {"rounds": 1500, "patience": 80})):
+                             ("previous_product_params", PREVIOUS_PRODUCT_PARAMS, {"rounds": 1500, "patience": 80})):
         m, p_te, th = evaluate(params, *split, **kw)
         m["bootstrap_95ci"] = bootstrap(split[5], p_te, th)
         res["headline_split"][name] = m
