@@ -1,0 +1,222 @@
+{
+  "dataset": "ULB creditcard.csv",
+  "split": "time-ordered 70/15/15",
+  "test_frauds": 52,
+  "headline_split": {
+    "benchmark_recipe": {
+      "pr_auc": 0.7507,
+      "review": {
+        "threshold": 0.0241,
+        "precision": 0.5652,
+        "recall": 0.75,
+        "alerts_per_10k": 16.2,
+        "tp": 39,
+        "fp": 30,
+        "fn": 13
+      },
+      "block": {
+        "threshold": 0.9066,
+        "precision": 0.9722,
+        "recall": 0.6731,
+        "alerts_per_10k": 8.4,
+        "tp": 35,
+        "fp": 1,
+        "fn": 17
+      },
+      "bootstrap_95ci": {
+        "pr_auc": [
+          0.63,
+          0.853
+        ],
+        "review_precision": [
+          0.443,
+          0.684
+        ],
+        "review_recall": [
+          0.627,
+          0.86
+        ],
+        "block_precision": [
+          0.9,
+          1.0
+        ],
+        "block_recall": [
+          0.537,
+          0.796
+        ]
+      }
+    },
+    "previous_product_params": {
+      "pr_auc": 0.6555,
+      "review": {
+        "threshold": 0.0065,
+        "precision": 0.2766,
+        "recall": 0.75,
+        "alerts_per_10k": 33.0,
+        "tp": 39,
+        "fp": 102,
+        "fn": 13
+      },
+      "block": {
+        "threshold": 0.4457,
+        "precision": 0.7347,
+        "recall": 0.6923,
+        "alerts_per_10k": 11.5,
+        "tp": 36,
+        "fp": 13,
+        "fn": 16
+      },
+      "bootstrap_95ci": {
+        "pr_auc": [
+          0.515,
+          0.777
+        ],
+        "review_precision": [
+          0.205,
+          0.353
+        ],
+        "review_recall": [
+          0.627,
+          0.86
+        ],
+        "block_precision": [
+          0.605,
+          0.854
+        ],
+        "block_recall": [
+          0.561,
+          0.815
+        ]
+      }
+    }
+  },
+  "seed_pr_auc": {
+    "values": [
+      0.714,
+      0.7522,
+      0.6867,
+      0.7127,
+      0.7486
+    ],
+    "mean": 0.7228,
+    "sd": 0.0245
+  },
+  "rolling_folds": [
+    {
+      "train_end": 0.5,
+      "test_window": [
+        0.6,
+        0.7
+      ],
+      "test_rows": 28480,
+      "test_frauds": 24,
+      "pr_auc": 0.6633,
+      "review": {
+        "threshold": 0.0167,
+        "precision": 0.3103,
+        "recall": 0.75,
+        "alerts_per_10k": 20.4,
+        "tp": 18,
+        "fp": 40,
+        "fn": 6
+      },
+      "block": {
+        "threshold": 0.9647,
+        "precision": 0.8235,
+        "recall": 0.5833,
+        "alerts_per_10k": 6.0,
+        "tp": 14,
+        "fp": 3,
+        "fn": 10
+      },
+      "logistic_pr_auc": 0.6556
+    },
+    {
+      "train_end": 0.6,
+      "test_window": [
+        0.7,
+        0.8
+      ],
+      "test_rows": 28481,
+      "test_frauds": 33,
+      "pr_auc": 0.8337,
+      "review": {
+        "threshold": 0.0008,
+        "precision": 0.0575,
+        "recall": 0.8788,
+        "alerts_per_10k": 177.0,
+        "tp": 29,
+        "fp": 475,
+        "fn": 4
+      },
+      "block": {
+        "threshold": 0.9908,
+        "precision": 1.0,
+        "recall": 0.6061,
+        "alerts_per_10k": 7.0,
+        "tp": 20,
+        "fp": 0,
+        "fn": 13
+      },
+      "logistic_pr_auc": 0.8187
+    },
+    {
+      "train_end": 0.7,
+      "test_window": [
+        0.8,
+        0.9
+      ],
+      "test_rows": 28481,
+      "test_frauds": 53,
+      "pr_auc": 0.8375,
+      "review": {
+        "threshold": 0.0006,
+        "precision": 0.0986,
+        "recall": 0.9057,
+        "alerts_per_10k": 171.0,
+        "tp": 48,
+        "fp": 439,
+        "fn": 5
+      },
+      "block": {
+        "threshold": 0.9813,
+        "precision": 1.0,
+        "recall": 0.6604,
+        "alerts_per_10k": 12.3,
+        "tp": 35,
+        "fp": 0,
+        "fn": 18
+      },
+      "logistic_pr_auc": 0.8384
+    },
+    {
+      "train_end": 0.8,
+      "test_window": [
+        0.9,
+        1.0
+      ],
+      "test_rows": 28481,
+      "test_frauds": 22,
+      "pr_auc": 0.5711,
+      "review": {
+        "threshold": 0.0102,
+        "precision": 0.1391,
+        "recall": 0.7273,
+        "alerts_per_10k": 40.4,
+        "tp": 16,
+        "fp": 99,
+        "fn": 6
+      },
+      "block": {
+        "threshold": 0.0936,
+        "precision": 0.5,
+        "recall": 0.6364,
+        "alerts_per_10k": 9.8,
+        "tp": 14,
+        "fp": 14,
+        "fn": 8
+      },
+      "logistic_pr_auc": 0.6366
+    }
+  ]
+}

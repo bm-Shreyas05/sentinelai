@@ -14,16 +14,21 @@ and mule rings, with scams and mules paying collector accounts). Replace with in
 
 **Evaluation.** Time-ordered 70/15/15 split; thresholds chosen on validation (block: precision ≥ 90%;
 review: recall ≥ 85%) and evaluated on the untouched test slice. Public-data check of the same
-recipe: ULB credit-card fraud, PR-AUC 0.751 (logistic baseline 0.694). See the README for figures.
+recipe: ULB credit-card fraud, PR-AUC 0.751 (logistic baseline 0.694) on one split and seed. Robustness
+checks on the same data (`benchmark/ulb_robustness.py`) show this is optimistic: 0.687 to 0.752
+across seeds, no consistent win over logistic regression on rolling time windows (PR-AUC 0.57 to
+0.84). The product's previous hyperparameters reached only 0.656, so since 2026-10-23 it trains
+with the benchmark recipe. ULB has none of the product's behavioural
+features, so the deployed model itself has not been evaluated on real data. See the README.
 
 **Results on simulated data** (`benchmark/product_eval.py`, test slice of 37,501 events with 313
-frauds): PR-AUC 0.923; review tier 71.9% precision / 86.6% recall; block tier 86.8% precision /
-82.1% recall. Caught at review tier or above: card testing 99.3% (150 frauds), cloned card and mule
-ring 100%, account takeover 70.3% (37 frauds), UPI scam 60.5% (76 frauds). Without the two payee
-features, on the same events: PR-AUC 0.873, review tier 45.2% precision / 86.3% recall.
+frauds): PR-AUC 0.925; review tier 72.5% precision / 86.9% recall; block tier 92.3% precision /
+80.8% recall. Caught at review tier or above: card testing 99.3% (150 frauds), cloned card and mule
+ring 100%, account takeover 70.3% (37 frauds), UPI scam 61.8% (76 frauds). Without the two payee
+features, on the same events: PR-AUC 0.872, review tier 46.6% precision / 85.9% recall.
 
 **Known weaknesses.** Social-engineering scams on the customer's own device are the hardest case
-(60% caught at review, 45% at block). Account takeover via malware on the customer's own phone is
+(62% caught at review, 38% at block). Account takeover via malware on the customer's own phone is
 next (70% at review). About 3 in 10 review alerts are legitimate payments. The payee signals rely on
 the simulator's payee behaviour, which was designed alongside them; expect a smaller gain on real
 data. Cold-start customers (no

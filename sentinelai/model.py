@@ -10,9 +10,9 @@ from sklearn.metrics import average_precision_score, precision_recall_curve, roc
 
 from .features import FEATURES, FeatureStore, to_vector
 
-PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=31, min_child_samples=30,
-              feature_fraction=0.9, bagging_fraction=0.8, bagging_freq=1,
-              scale_pos_weight=3.0, lambda_l2=1.0, verbose=-1, seed=42)
+PARAMS = dict(objective="binary", learning_rate=0.03, num_leaves=31, min_child_samples=40,
+              feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1,
+              scale_pos_weight=5.0, lambda_l2=1.0, verbose=-1, seed=42)
 
 
 @dataclass
@@ -98,8 +98,8 @@ def train(X, y, sample_weight=None, version=None, notes=""):
     w = sample_weight if sample_weight is not None else np.ones(n)
     dtr = lgb.Dataset(X[:i1], y[:i1], weight=w[:i1], feature_name=FEATURES, free_raw_data=False)
     dva = lgb.Dataset(X[i1:i2], y[i1:i2], feature_name=FEATURES, reference=dtr)
-    booster = lgb.train(PARAMS, dtr, num_boost_round=1500, valid_sets=[dva],
-                        callbacks=[lgb.early_stopping(80, verbose=False)])
+    booster = lgb.train(PARAMS, dtr, num_boost_round=2000, valid_sets=[dva],
+                        callbacks=[lgb.early_stopping(100, verbose=False)])
     p_va, p_te = booster.predict(X[i1:i2]), booster.predict(X[i2:])
     y_va, y_te = y[i1:i2], y[i2:]
     th = pick_thresholds(y_va, p_va)
