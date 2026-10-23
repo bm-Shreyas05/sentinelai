@@ -14,7 +14,11 @@ and mule rings, with scams and mules paying collector accounts). Replace with in
 
 **Evaluation.** Time-ordered 70/15/15 split; thresholds chosen on validation (block: precision ≥ 90%;
 review: recall ≥ 85%) and evaluated on the untouched test slice. Public-data check of the same
-recipe: ULB credit-card fraud, PR-AUC 0.751 (logistic baseline 0.694). See the README for figures.
+recipe: ULB credit-card fraud, PR-AUC 0.751 (logistic baseline 0.694) on one split and seed. Robustness
+checks on the same data (`benchmark/ulb_robustness.py`) show this is optimistic: 0.687 to 0.752
+across seeds, no consistent win over logistic regression on rolling time windows (PR-AUC 0.57 to
+0.84), and the product's own `PARAMS` reach 0.656. ULB has none of the product's behavioural
+features, so the deployed model itself has not been evaluated on real data. See the README.
 
 **Results on simulated data** (`benchmark/product_eval.py`, test slice of 37,501 events with 313
 frauds): PR-AUC 0.923; review tier 71.9% precision / 86.6% recall; block tier 86.8% precision /
