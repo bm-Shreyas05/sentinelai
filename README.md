@@ -38,15 +38,16 @@ writes `benchmark/ulb_robustness.json`):
   rolling windows it lands at 73% to 91% recall while alert volume swings from 20 to 177 per 10k
   payments and precision from 6% to 31%. Block precision ranges from 50% to 100%. With a few dozen
   frauds per window, a frozen threshold is a rough guide, not a guarantee.
-* **The product's own settings do worse.** The table uses a tuned recipe. The hyperparameters the
-  product actually trains with (`sentinelai/model.py` `PARAMS`) give PR-AUC 0.656 on the same
-  split, review tier 28% precision / 75% recall, block tier 73% precision / 69% recall.
+* **The product now trains with this recipe.** Until 2026-10-23 the product used different
+  hyperparameters, which scored PR-AUC 0.656 here (review tier 28% precision, block tier 73%).
+  `sentinelai/model.py` `PARAMS` now matches the benchmark recipe; on the simulated events below
+  the switch changed little (PR-AUC 0.923 to 0.925, and within ±0.02 on two other simulator seeds).
 * **What this does not test.** ULB is anonymised PCA components of European card payments: no
   customer, device, city or payee, so none of the product's 19 behavioural features (or the
   scenario results below) can be checked on it. It validates the training-and-thresholding recipe
   on real fraud, not the deployed model.
 
-Real versus simulated: the same kind of model reaches PR-AUC 0.92 on the simulator and 0.57 to
+Real versus simulated: the same kind of model reaches PR-AUC 0.93 on the simulator and 0.57 to
 0.84 on real card fraud. Expect real-world precision well below the simulated figures below.
 
 **Product model on simulated Indian payment events** (250,000 simulated events, 5 fraud scenarios;
@@ -54,22 +55,22 @@ these are not real-world results). Test slice: 37,501 events, 313 frauds.
 
 | Tier | Precision | Recall | Alerts per 10k payments |
 |---|---|---|---|
-| Review (score ≥ 0.283) | 72% | 87% | 101 |
-| Block (score ≥ 0.508) | 87% | 82% | 79 |
+| Review (score ≥ 0.268) | 73% | 87% | 100 |
+| Block (score ≥ 0.614) | 92% | 81% | 73 |
 
-PR-AUC 0.92. Share of fraudulent payments caught, by scenario (test frauds in brackets):
+PR-AUC 0.93. Share of fraudulent payments caught, by scenario (test frauds in brackets):
 
 | Scenario | Review tier or above | Block tier |
 |---|---|---|
 | Card testing (150) | 99% | 99% |
 | Cloned card (35) | 100% | 100% |
 | Mule ring (15) | 100% | 100% |
-| Account takeover (37) | 70% | 65% |
-| UPI social-engineering scam (76) | 60% | 45% |
+| Account takeover (37) | 70% | 68% |
+| UPI social-engineering scam (76) | 62% | 38% |
 
 Payee features (first transfer to this payee; how many other accounts pay it) carry most of the gain
-over the earlier model. On the same events without them, the review tier is 45% precision at 86%
-recall with 159 alerts per 10k, and PR-AUC is 0.87. The simulator's payee behaviour (collector
+over the earlier model. On the same events without them, the review tier is 47% precision at 86%
+recall with 154 alerts per 10k, and PR-AUC is 0.87. The simulator's payee behaviour (collector
 accounts, rotating scam UPI IDs, popular vendors and shared landlords on the legitimate side) was
 written alongside these features, so treat the gain as evidence the pipeline learns the signal, not
 as a real-world estimate. Scams remain hardest because the victim pays from their own phone at home.
@@ -176,7 +177,7 @@ an analyst and an agent work the same case queue.
   held-out paraphrases it handles only 6, mostly by hedging or abstaining on questions it should
   answer. Across both sets every high-confidence answer was correct. It does not understand
   paraphrases the way an embedding model would.
-- Review-tier precision is about 72% on simulated data, so roughly 3 in 10 review alerts are
+- Review-tier precision is about 73% on simulated data, so roughly 3 in 10 review alerts are
   still false alarms. Payee features need the beneficiary (UPI ID) on each transfer; without it
   the payee defaults to the merchant and those two features stay at zero.
 - Drift is measured against the training data. Time-of-day features are only compared once the

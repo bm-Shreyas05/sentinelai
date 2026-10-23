@@ -3,28 +3,28 @@
   "users": 3000,
   "seed": 11,
   "thresholds": {
-    "review": 0.28282,
-    "block": 0.50752
+    "review": 0.26775,
+    "block": 0.61362
   },
   "metrics": {
-    "pr_auc": 0.9231,
+    "pr_auc": 0.9254,
     "roc_auc": 0.9988,
     "review": {
-      "threshold": 0.28282,
-      "precision": 0.7188,
-      "recall": 0.8658,
-      "alerts_per_10k": 100.5
+      "threshold": 0.26775,
+      "precision": 0.7253,
+      "recall": 0.869,
+      "alerts_per_10k": 100.0
     },
     "block": {
-      "threshold": 0.50752,
-      "precision": 0.8682,
-      "recall": 0.8211,
-      "alerts_per_10k": 78.9
+      "threshold": 0.61362,
+      "precision": 0.9234,
+      "recall": 0.8083,
+      "alerts_per_10k": 73.1
     },
     "n_train": 175002,
     "n_test": 37501,
     "test_frauds": 313,
-    "best_iteration": 246
+    "best_iteration": 542
   },
   "per_scenario": {
     "card_testing": {
@@ -45,15 +45,15 @@
     "takeover": {
       "test_frauds": 37,
       "caught_review": 0.703,
-      "caught_block": 0.649
+      "caught_block": 0.676
     },
     "upi_scam": {
       "test_frauds": 76,
-      "caught_review": 0.605,
-      "caught_block": 0.447
+      "caught_review": 0.618,
+      "caught_block": 0.382
     }
   },
-  "legit_flag_rate_review": 0.00285,
+  "legit_flag_rate_review": 0.00277,
   "test_scenario_counts": {
     "legit": 37188,
     "upi_scam": 76,

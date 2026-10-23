@@ -46,7 +46,7 @@
         ]
       }
     },
-    "product_params": {
+    "previous_product_params": {
       "pr_auc": 0.6555,
       "review": {
         "threshold": 0.0065,
