@@ -30,9 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: docker build -t sentinelai .
-      # Boot the image the way Render does (PORT set, first start trains the model) and wait for /health
+      # Boot the image the way Render does (PORT and a secret key set) and wait for /health
       - name: Smoke test container
         run: |
-          docker run -d --name api -e PORT=9000 -p 9000:9000 sentinelai
+          if docker run --rm sentinelai; then echo "started without SENTINEL_API_KEYS"; exit 1; fi
+          docker run -d --name api -e PORT=9000 -e SENTINEL_API_KEYS=ci-smoke-key -e SENTINEL_DEMO=1 -p 9000:9000 sentinelai
           for i in $(seq 1 60); do curl -fsS localhost:9000/health && exit 0; sleep 3; done
           docker logs api; exit 1

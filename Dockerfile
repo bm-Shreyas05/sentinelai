@@ -16,9 +16,13 @@ COPY sentinelai sentinelai
 COPY policies policies
 COPY benchmark/results.json benchmark/results.json
 COPY --from=web /web/dist web/dist
-RUN useradd -m sentinel && mkdir -p /app/var && chown -R sentinel /app
-USER sentinel
 ENV SENTINEL_DB_PATH=/app/var/sentinel.db SENTINEL_MODEL_DIR=/app/var/models PYTHONUNBUFFERED=1
+# Train at build time: training peaks above 512 MB, more than small free hosts give at runtime,
+# and a baked-in model makes cold starts instant. The throwaway training database is dropped.
+RUN python -m sentinelai train && rm -f /app/var/sentinel.db*
+RUN useradd -m sentinel && chown -R sentinel /app
+USER sentinel
 EXPOSE 8000
-# Train on first start if no model is present, then serve the API and console
-CMD ["sh", "-c", "[ -f /app/var/models/current.json ] || python -m sentinelai train; exec python -m sentinelai serve --port ${PORT:-8000}"]
+# Train only if a mounted volume hides the baked-in model, then serve the API and console.
+# Refuses to start without a real SENTINEL_API_KEYS; SENTINEL_DEMO=1 streams simulated payments.
+CMD ["sh", "-c", "[ -f /app/var/models/current.json ] || python -m sentinelai train; exec python -m sentinelai serve --host 0.0.0.0 --port ${PORT:-8000}"]

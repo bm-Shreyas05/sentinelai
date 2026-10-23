@@ -10,7 +10,9 @@
 """
 import argparse, json, logging, sys
 
-from .config import get_settings
+from .config import DEV_KEY, get_settings
+
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 
 def main(argv=None):
@@ -22,7 +24,7 @@ def main(argv=None):
     s.add_argument("--users", type=int, default=3000)
     s.add_argument("--warmup", type=int, default=90_000,
                    help="events replayed into customer histories (not scored) before scoring starts")
-    v = sub.add_parser("serve"); v.add_argument("--host", default="0.0.0.0"); v.add_argument("--port", type=int, default=8000)
+    v = sub.add_parser("serve"); v.add_argument("--host", default="127.0.0.1"); v.add_argument("--port", type=int, default=8000)
     v.add_argument("--demo", action="store_true", help="train if needed, warm up and stream simulated traffic")
     sub.add_parser("mcp")
     r = sub.add_parser("retrain"); r.add_argument("--events", type=int, default=250_000); r.add_argument("--force", action="store_true")
@@ -55,6 +57,9 @@ def main(argv=None):
         print(json.dumps({"decisions": dict(c), "metrics": eng.live_metrics(10**9)}, indent=2))
     elif a.cmd == "serve":
         import os, uvicorn
+        if a.host not in LOOPBACK and (not settings.api_keys or DEV_KEY in settings.api_keys):
+            sys.exit(f"refusing to serve on {a.host} with the public dev key; set SENTINEL_API_KEYS to a secret "
+                     "value (e.g. `python -c 'import secrets; print(secrets.token_urlsafe(24))'`)")
         if a.demo:
             from .model import Registry
             if Registry(settings.model_dir).current_version() is None:

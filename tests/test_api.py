@@ -97,3 +97,12 @@ def test_console_demo_traffic(client, engine):
     time.sleep(1.1)
     assert engine.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] > before
     assert client.post("/v1/console/traffic", json={"rate": 0}, headers=H).status_code == 422
+
+
+def test_serve_refuses_public_bind_with_dev_key(monkeypatch):
+    import pytest
+    from sentinelai.__main__ import main
+    for keys in ("dev-key-change-me", "", "real-key,dev-key-change-me"):
+        monkeypatch.setenv("SENTINEL_API_KEYS", keys)
+        with pytest.raises(SystemExit, match="refusing to serve"):
+            main(["serve", "--host", "0.0.0.0"])
