@@ -3,6 +3,9 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Local-only default key. `serve` refuses to bind a non-loopback address while it is in use.
+DEV_KEY = "dev-key-change-me"
+
 
 def _env(key, default=None):
     return os.environ.get(key, default)
@@ -15,7 +18,7 @@ class Settings:
     policy_dir: Path = field(default_factory=lambda: Path(_env("SENTINEL_POLICY_DIR",
                                    str(Path(__file__).resolve().parent.parent / "policies"))))
     api_keys: tuple = field(default_factory=lambda: tuple(
-        k.strip() for k in _env("SENTINEL_API_KEYS", "dev-key-change-me").split(",") if k.strip()))
+        k.strip() for k in _env("SENTINEL_API_KEYS", DEV_KEY).split(",") if k.strip()))
     rate_limit_per_min: int = field(default_factory=lambda: int(_env("SENTINEL_RATE_LIMIT_PER_MIN", "600")))
     # Cost-sensitive decision layer: below this amount a BLOCK is downgraded to REVIEW, because the
     # customer friction of a hard block outweighs the money at risk. Card testing is still caught:

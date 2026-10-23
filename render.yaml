@@ -1,14 +1,14 @@
-# One-click deploy on Render (render.com): one service serves the API and the web console at /.
+# Free deploy on Render (render.com): New -> Blueprint -> this repo. One web service serves the API
+# and the web console at /. The free plan has no persistent disk, so the database resets on every
+# restart or redeploy; the model is baked into the image and demo traffic refills the console.
 services:
   - type: web
-    name: sentinelai-api
+    name: sentinelai
     runtime: docker
-    plan: starter        # persistent disks need a paid plan; drop `disk` to use the free plan
+    plan: free
     healthCheckPath: /health
     envVars:
-      - key: SENTINEL_API_KEYS
+      - key: SENTINEL_API_KEYS   # random secret; copy it from the service's Environment tab to sign in
         generateValue: true
-    disk:
-      name: sentinel-data
-      mountPath: /app/var
-      sizeGB: 1
+      - key: SENTINEL_DEMO
+        value: "1"

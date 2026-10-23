@@ -51,8 +51,8 @@ export function Login() {
           {busy ? "Checking…" : <>Enter console <ArrowRight size={14} /></>}
         </Button>
         <p className="mt-5 text-[11.5px] leading-relaxed text-faint">
-          Keys come from <code className="font-mono text-dim">SENTINEL_API_KEYS</code>. The local default is{" "}
-          <code className="font-mono text-dim">dev-key-change-me</code>; change it before exposing the API.
+          Keys come from <code className="font-mono text-dim">SENTINEL_API_KEYS</code>. On a hosted deploy, ask
+          whoever runs it for a key.
         </p>
       </form>
     </div>

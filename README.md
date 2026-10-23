@@ -114,8 +114,11 @@ Sign in with an API key from `SENTINEL_API_KEYS` (local default `dev-key-change-
 `--demo`, `serve` runs the same API and console with no simulated traffic. To work on the console,
 run `npm run dev` in `web/`: Vite serves it on :5173 with hot reload and proxies `/v1` to :8000.
 
-Or with Docker: `cp .env.example .env && docker compose up --build` (set `SENTINEL_DEMO=1` for live
-demo traffic).
+`serve` binds `127.0.0.1` by default. On any other address (`--host 0.0.0.0`, Docker, a host) it
+refuses to start until `SENTINEL_API_KEYS` holds a real secret.
+
+Or with Docker: `cp .env.example .env`, set `SENTINEL_API_KEYS` in `.env`, then
+`docker compose up --build` (set `SENTINEL_DEMO=1` for live demo traffic).
 
 ### The console
 
@@ -128,12 +131,14 @@ demo traffic).
 
 `Ctrl/⌘ K` opens a command palette (pages, open cases, case numbers); `g` then a letter jumps between pages.
 
-### Deploy
+### Deploy (free)
 
-**API on Render.** New → Blueprint → this repo; `render.yaml` builds the Docker image, generates
-`SENTINEL_API_KEYS` (read it from the service's Environment tab) and mounts a 1 GB disk for the
-database and models. Persistent disks need a paid instance; to try it on the free plan, remove the
-`disk` block and set `plan: free` (data then resets on every deploy).
+**Render, free plan.** Sign in to [render.com](https://render.com) with GitHub, then
+New → Blueprint → pick this repo → Apply. `render.yaml` builds the Docker image (the model is
+trained during the build), turns on demo traffic and generates a random `SENTINEL_API_KEYS`; copy it
+from the service's Environment tab and use it to sign in to the console. Free services sleep after
+15 idle minutes (the next visit takes about a minute to wake) and keep no data across restarts, so
+the database starts fresh each time and demo traffic refills it.
 
 ### Score a payment
 
