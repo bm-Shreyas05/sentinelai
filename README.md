@@ -3,6 +3,10 @@
 Real-time fraud detection, explanation and case management for Indian payments (UPI, cards,
 netbanking), with an MCP server so AI agents can operate it.
 
+**Live demo: [sentinelai-qm7l.onrender.com](https://sentinelai-qm7l.onrender.com)**. Browse the
+console without signing in (view only, simulated payments). It runs on Render's free plan, so the
+first visit after a quiet spell takes about a minute to wake up.
+
 A payment comes in, SentinelAI scores it in a few milliseconds, decides **ALLOW / REVIEW / BLOCK**,
 explains the decision in plain English ("₹1,20,000 vs ₹1,900 typical, from a device never seen before"),
 and for anything flagged an investigation agent opens a case, pulls the customer's history, cites the
@@ -136,7 +140,9 @@ Or with Docker: `cp .env.example .env`, set `SENTINEL_API_KEYS` in `.env`, then
 **Render, free plan.** Sign in to [render.com](https://render.com) with GitHub, then
 New → Blueprint → pick this repo → Apply. `render.yaml` builds the Docker image (the model is
 trained during the build), turns on demo traffic and generates a random `SENTINEL_API_KEYS`; copy it
-from the service's Environment tab and use it to sign in to the console. Free services sleep after
+from the service's Environment tab and use it to sign in to the console. `SENTINEL_PUBLIC_READ=1`
+lets visitors browse the console and API without a key (rate-limited per visitor); scoring payments,
+resolving cases, retraining and the traffic controls still need it. Free services sleep after
 15 idle minutes (the next visit takes about a minute to wake) and keep no data across restarts, so
 the database starts fresh each time and demo traffic refills it.
 

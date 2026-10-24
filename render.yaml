@@ -12,3 +12,5 @@ services:
         generateValue: true
       - key: SENTINEL_DEMO
         value: "1"
+      - key: SENTINEL_PUBLIC_READ  # visitors can browse without a key; changes still need one
+        value: "1"

@@ -1,10 +1,12 @@
 import { ArrowRight, KeyRound } from "lucide-react";
 import { useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { Logo } from "../components/Shell";
 import { Button } from "../components/ui";
 import { api, ApiError, setKey } from "../lib/api";
 
-export function Login() {
+export function Login({ canBrowse = false }: { canBrowse?: boolean }) {
+  const navigate = useNavigate();
   const [key, setValue] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,6 +17,7 @@ export function Login() {
     try {
       await api("/v1/metrics", { key: key.trim() });
       setKey(key.trim());
+      if (canBrowse) navigate("/");
     } catch (x) {
       setErr(x instanceof ApiError && x.status === 401 ? "That key was not accepted." : "Could not reach the SentinelAI API.");
     } finally {
@@ -54,6 +57,11 @@ export function Login() {
           Keys come from <code className="font-mono text-dim">SENTINEL_API_KEYS</code>. On a hosted deploy, ask
           whoever runs it for a key.
         </p>
+        {canBrowse && (
+          <Link to="/" className="mt-3 block text-center text-[12.5px] text-dim hover:text-fg">
+            Or look around without a key (view only)
+          </Link>
+        )}
       </form>
     </div>
   );

@@ -106,3 +106,24 @@ def test_serve_refuses_public_bind_with_dev_key(monkeypatch):
         monkeypatch.setenv("SENTINEL_API_KEYS", keys)
         with pytest.raises(SystemExit, match="refusing to serve"):
             main(["serve", "--host", "0.0.0.0"])
+
+
+def test_public_read_opens_reads_only(client, engine, monkeypatch):
+    from sentinelai import api
+    monkeypatch.setattr(engine.settings, "public_read", True)
+    monkeypatch.setattr(api, "_anon_bucket", None)
+    assert client.get("/health").json()["public_read"] is True
+    for path in ("/v1/metrics", "/v1/cases", "/v1/console/overview", "/v1/console/traffic"):
+        assert client.get(path).status_code == 200, path
+    assert client.post("/v1/policy/ask", json={"question": "When is a payment blocked?"}).status_code == 200
+    # changes still need a key, and a wrong key is still rejected on reads
+    assert client.post("/v1/console/traffic", json={"running": False}).status_code == 401
+    assert client.post("/v1/cases/1/resolve", json={"is_fraud": True, "analyst": "x"}).status_code == 401
+    assert client.post("/v1/transactions", json={"user_id": "U1", "amount": 1}).status_code == 401
+    assert client.get("/v1/metrics", headers={"X-API-Key": "wrong"}).status_code == 401
+    # keyless reads are rate-limited per client
+    monkeypatch.setattr(engine.settings, "public_rate_limit_per_min", 2)
+    monkeypatch.setattr(api, "_anon_bucket", None)
+    codes = [client.get("/v1/metrics", headers={"X-Forwarded-For": "1.2.3.4"}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    assert client.get("/v1/metrics", headers={"X-Forwarded-For": "5.6.7.8"}).status_code == 200
