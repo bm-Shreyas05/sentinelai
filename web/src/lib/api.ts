@@ -30,8 +30,15 @@ export class ApiError extends Error {
   }
 }
 
+export const VIEW_ONLY = "View-only mode: sign in with an API key to make changes.";
+// Writes a visitor may still make without a key (the server treats them as reads)
+const OPEN_WRITES = ["/v1/policy/ask"];
+
 export async function api<T>(path: string, init?: RequestInit & { json?: unknown; key?: string }): Promise<T> {
-  const headers: Record<string, string> = { "X-API-Key": init?.key ?? getKey() };
+  const key = init?.key ?? getKey();
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!key && method !== "GET" && !OPEN_WRITES.includes(path)) throw new ApiError(401, VIEW_ONLY);
+  const headers: Record<string, string> = key ? { "X-API-Key": key } : {};
   let body = init?.body;
   if (init?.json !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -46,7 +53,7 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
     } catch {
       /* not JSON */
     }
-    if (res.status === 401) setKey(null);
+    if (res.status === 401 && !init?.key && key) setKey(null);
     throw new ApiError(res.status, msg);
   }
   return res.json() as Promise<T>;

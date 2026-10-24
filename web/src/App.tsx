@@ -15,6 +15,14 @@ import { Policy } from "./pages/Policy";
 
 export function App() {
   const [key, setKeyState] = useState(getKey());
+  // null until /health says whether visitors may browse without a key
+  const [publicRead, setPublicRead] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/health")
+      .then((r) => r.json())
+      .then((h) => setPublicRead(Boolean(h.public_read)))
+      .catch(() => setPublicRead(false));
+  }, []);
   useEffect(() => {
     const sync = () => {
       setKeyState(getKey());
@@ -24,9 +32,11 @@ export function App() {
     return () => window.removeEventListener("sentinel-auth", sync);
   }, []);
 
-  if (!key) return <Login />;
+  if (!key && publicRead === null) return null;
+  if (!key && !publicRead) return <Login />;
   return (
     <Routes>
+      <Route path="login" element={<Login canBrowse={!key} />} />
       <Route element={<Shell />}>
         <Route index element={<Command />} />
         <Route path="cases" element={<CaseQueue />} />

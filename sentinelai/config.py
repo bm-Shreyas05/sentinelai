@@ -19,6 +19,9 @@ class Settings:
                                    str(Path(__file__).resolve().parent.parent / "policies"))))
     api_keys: tuple = field(default_factory=lambda: tuple(
         k.strip() for k in _env("SENTINEL_API_KEYS", DEV_KEY).split(",") if k.strip()))
+    # 1 = anyone can read (GET routes and policy questions) without a key; changes still need one
+    public_read: bool = field(default_factory=lambda: _env("SENTINEL_PUBLIC_READ", "0") == "1")
+    public_rate_limit_per_min: int = field(default_factory=lambda: int(_env("SENTINEL_PUBLIC_RATE_LIMIT_PER_MIN", "300")))
     rate_limit_per_min: int = field(default_factory=lambda: int(_env("SENTINEL_RATE_LIMIT_PER_MIN", "600")))
     # Cost-sensitive decision layer: below this amount a BLOCK is downgraded to REVIEW, because the
     # customer friction of a hard block outweighs the money at risk. Card testing is still caught:

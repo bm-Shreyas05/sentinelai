@@ -1,7 +1,9 @@
 """REST API.
 
-Auth: every /v1 route requires an `X-API-Key` header matching SENTINEL_API_KEYS.
-Rate limiting: token bucket per API key (SENTINEL_RATE_LIMIT_PER_MIN).
+Auth: every /v1 route requires an `X-API-Key` header matching SENTINEL_API_KEYS, except that with
+SENTINEL_PUBLIC_READ=1 reads (GET routes and policy questions) are open to visitors without a key.
+Rate limiting: token bucket per API key (SENTINEL_RATE_LIMIT_PER_MIN), and per client address for
+keyless reads (SENTINEL_PUBLIC_RATE_LIMIT_PER_MIN).
 Interactive docs at /docs. The web console (web/, built to web/dist) is served at /.
 """
 import logging, os, secrets, threading, time
@@ -63,6 +65,7 @@ class _Bucket:
 
 
 _bucket = None
+_anon_bucket = None
 
 
 def engine() -> SentinelEngine:
@@ -88,6 +91,27 @@ def require_key(x_api_key: str = Header(default="")):
     if not _bucket.take(x_api_key):
         raise HTTPException(429, "rate limit exceeded")
     return x_api_key
+
+
+def read_access(request: Request, x_api_key: str = Header(default="")):
+    """A key if one is sent or public reads are off; otherwise a keyless read, rate-limited per client."""
+    global _anon_bucket
+    eng = engine()
+    if x_api_key or not eng.settings.public_read:
+        return require_key(x_api_key)
+    if _anon_bucket is None:
+        _anon_bucket = _Bucket(eng.settings.public_rate_limit_per_min)
+    # Behind a proxy (Render) the client is the last X-Forwarded-For hop; earlier hops are client-supplied
+    fwd = request.headers.get("x-forwarded-for", "")
+    client = fwd.split(",")[-1].strip() if fwd else (request.client.host if request.client else "")
+    if not _anon_bucket.take("anon:" + client):
+        raise HTTPException(429, "rate limit exceeded")
+    return ""
+
+
+def method_access(request: Request, x_api_key: str = Header(default="")):
+    """For routers mixing reads and writes: GETs go through read_access, everything else needs a key."""
+    return read_access(request, x_api_key) if request.method == "GET" else require_key(x_api_key)
 
 
 class TransactionIn(BaseModel):
@@ -117,7 +141,8 @@ class Question(BaseModel):
 @app.get("/health")
 def health():
     eng = engine()
-    return {"status": "ok", "version": __version__, "model_version": eng.bundle.version}
+    return {"status": "ok", "version": __version__, "model_version": eng.bundle.version,
+            "public_read": eng.settings.public_read}
 
 
 @app.post("/v1/transactions", dependencies=[Depends(require_key)])
@@ -144,7 +169,7 @@ async def ingest_batch(request: Request):
     return {"results": out}
 
 
-@app.get("/v1/transactions/{txn_id}", dependencies=[Depends(require_key)])
+@app.get("/v1/transactions/{txn_id}", dependencies=[Depends(read_access)])
 def get_transaction(txn_id: str):
     try:
         return engine().get_transaction(txn_id)
@@ -152,18 +177,18 @@ def get_transaction(txn_id: str):
         raise HTTPException(404, str(exc))
 
 
-@app.get("/v1/users/{user_id}/history", dependencies=[Depends(require_key)])
+@app.get("/v1/users/{user_id}/history", dependencies=[Depends(read_access)])
 def user_history(user_id: str, limit: int = Query(20, ge=1, le=200)):
     return engine().user_history(user_id, limit)
 
 
-@app.get("/v1/cases", dependencies=[Depends(require_key)])
+@app.get("/v1/cases", dependencies=[Depends(read_access)])
 def list_cases(status: Literal["open", "confirmed_fraud", "false_positive", "all"] = "open",
                limit: int = Query(100, ge=1, le=500)):
     return engine().list_cases(None if status == "all" else status, limit)
 
 
-@app.get("/v1/cases/{case_id}", dependencies=[Depends(require_key)])
+@app.get("/v1/cases/{case_id}", dependencies=[Depends(read_access)])
 def get_case(case_id: int):
     try:
         return engine().get_case(case_id)
@@ -181,22 +206,22 @@ def resolve_case(case_id: int, body: Resolution):
         raise HTTPException(409, str(exc))
 
 
-@app.get("/v1/metrics", dependencies=[Depends(require_key)])
+@app.get("/v1/metrics", dependencies=[Depends(read_access)])
 def metrics(window_s: int = Query(3600, ge=60, le=10**9)):
     return engine().live_metrics(window_s)
 
 
-@app.get("/v1/drift", dependencies=[Depends(require_key)])
+@app.get("/v1/drift", dependencies=[Depends(read_access)])
 def drift(window: int = Query(2000, ge=100, le=50_000)):
     return engine().drift(window)
 
 
-@app.post("/v1/policy/ask", dependencies=[Depends(require_key)])
+@app.post("/v1/policy/ask", dependencies=[Depends(read_access)])
 def ask_policy(q: Question):
     return engine().ask_policy(q.question)
 
 
-@app.get("/v1/models", dependencies=[Depends(require_key)])
+@app.get("/v1/models", dependencies=[Depends(read_access)])
 def models():
     eng = engine()
     return {"current": eng.bundle.version, "versions": eng.registry.versions()}
@@ -207,7 +232,7 @@ def reload_model():
     return {"current": engine().reload_model()}
 
 
-app.include_router(build_router(engine, traffic), dependencies=[Depends(require_key)])
+app.include_router(build_router(engine, traffic), dependencies=[Depends(method_access)])
 
 
 # ── web console: static build with client-side routing ───────────────────────

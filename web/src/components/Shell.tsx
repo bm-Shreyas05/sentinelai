@@ -1,9 +1,9 @@
 import {
-  Activity, Bot, BookOpenText, Command, FlaskConical, Inbox, LogOut, Pause, Play, Plug, Radar, ScrollText, Search,
+  Activity, Bot, BookOpenText, Command, FlaskConical, Inbox, KeyRound, LogIn, LogOut, Pause, Play, Plug, Radar, ScrollText, Search,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { setKey, useCases, useOverview, useTraffic } from "../lib/api";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { getKey, setKey, useCases, useOverview, useTraffic } from "../lib/api";
 import { inr } from "../lib/format";
 import { cx } from "./ui";
 
@@ -46,23 +46,34 @@ function TrafficControl() {
         <span className={cx("relative size-2 rounded-full", running ? "bg-allow" : "bg-faint")} />
       </span>
       <span className="hidden text-[12px] text-dim sm:inline">{running ? "Live demo traffic" : "Traffic paused"}</span>
-      <select
-        aria-label="Transactions per second"
-        value={rate}
-        onChange={(e) => t.mutate({ rate: Number(e.target.value) })}
-        className="num rounded-md border border-line bg-panel px-1.5 py-1 text-[12px] text-fg outline-none"
-      >
-        {[1, 2, 5, 10, 20, 30].map((r) => <option key={r} value={r}>{r} tx/s</option>)}
-      </select>
-      <button
-        onClick={() => t.mutate({ running: !running })}
-        className={cx(
-          "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition",
-          running ? "bg-panel-3 text-fg hover:bg-line-2" : "bg-gradient-to-r from-saffron to-rose text-ink hover:brightness-110",
-        )}
-      >
-        {running ? <Pause size={12} /> : <Play size={12} />} {running ? "Pause" : "Start"}
-      </button>
+      {!getKey() ? (
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-saffron to-rose px-2.5 py-1 text-[12px] font-semibold text-ink hover:brightness-110"
+        >
+          <KeyRound size={12} /> View only · Sign in
+        </Link>
+      ) : (
+        <>
+          <select
+            aria-label="Transactions per second"
+            value={rate}
+            onChange={(e) => t.mutate({ rate: Number(e.target.value) })}
+            className="num rounded-md border border-line bg-panel px-1.5 py-1 text-[12px] text-fg outline-none"
+          >
+            {[1, 2, 5, 10, 20, 30].map((r) => <option key={r} value={r}>{r} tx/s</option>)}
+          </select>
+          <button
+            onClick={() => t.mutate({ running: !running })}
+            className={cx(
+              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition",
+              running ? "bg-panel-3 text-fg hover:bg-line-2" : "bg-gradient-to-r from-saffron to-rose text-ink hover:brightness-110",
+            )}
+          >
+            {running ? <Pause size={12} /> : <Play size={12} />} {running ? "Pause" : "Start"}
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -158,9 +169,15 @@ export function Shell() {
         </nav>
         <div className="m-3 rounded-xl border border-line bg-panel-2/60 p-3 text-[11.5px] leading-relaxed text-faint">
           Amounts in INR, times in IST. Scores are probabilities from the serving LightGBM model.
-          <button onClick={() => setKey(null)} className="mt-2 flex items-center gap-1.5 text-dim hover:text-fg">
-            <LogOut size={12} /> Sign out
-          </button>
+          {getKey() ? (
+            <button onClick={() => setKey(null)} className="mt-2 flex items-center gap-1.5 text-dim hover:text-fg">
+              <LogOut size={12} /> Sign out
+            </button>
+          ) : (
+            <Link to="/login" className="mt-2 flex items-center gap-1.5 text-dim hover:text-fg">
+              <LogIn size={12} /> Sign in to make changes
+            </Link>
+          )}
         </div>
       </aside>
 
