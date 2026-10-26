@@ -8,7 +8,7 @@ import json, logging, threading, time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from . import db
@@ -215,12 +215,16 @@ def build_router(engine, traffic) -> APIRouter:
         return out
 
     @r.get("/connect")
-    def connect():
+    def connect(x_api_key: str = Header(default="")):
+        # Keyless visitors (public read) get a template: the server's real paths are only for key holders
         s = engine().settings
+        if x_api_key:
+            cwd, db_path, model_dir = str(ROOT), str(Path(s.db_path).resolve()), str(Path(s.model_dir).resolve())
+        else:
+            cwd, db_path, model_dir = "/path/to/sentinelai", "var/sentinel.db", "var/models"
         return {"mcp": {"mcpServers": {"sentinelai": {
-            "command": "python", "args": ["-m", "sentinelai", "mcp"], "cwd": str(ROOT),
-            "env": {"SENTINEL_DB_PATH": str(Path(s.db_path).resolve()),
-                    "SENTINEL_MODEL_DIR": str(Path(s.model_dir).resolve())}}}},
+            "command": "python", "args": ["-m", "sentinelai", "mcp"], "cwd": cwd,
+            "env": {"SENTINEL_DB_PATH": db_path, "SENTINEL_MODEL_DIR": model_dir}}}},
             "tools": ["score_transaction", "get_case", "list_open_cases", "resolve_case", "get_user_history",
                       "lookup_policy", "check_drift", "live_metrics"]}
 

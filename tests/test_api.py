@@ -116,6 +116,11 @@ def test_public_read_opens_reads_only(client, engine, monkeypatch):
     for path in ("/v1/metrics", "/v1/cases", "/v1/console/overview", "/v1/console/traffic"):
         assert client.get(path).status_code == 200, path
     assert client.post("/v1/policy/ask", json={"question": "When is a payment blocked?"}).status_code == 200
+    # the MCP snippet shows a template to visitors, not the server's filesystem layout
+    anon = client.get("/v1/console/connect").json()["mcp"]["mcpServers"]["sentinelai"]
+    keyed = client.get("/v1/console/connect", headers=H).json()["mcp"]["mcpServers"]["sentinelai"]
+    assert anon["cwd"] == "/path/to/sentinelai" and keyed["cwd"] != anon["cwd"]
+    assert str(engine.settings.db_path.resolve()) not in str(anon)
     # changes still need a key, and a wrong key is still rejected on reads
     assert client.post("/v1/console/traffic", json={"running": False}).status_code == 401
     assert client.post("/v1/cases/1/resolve", json={"is_fraud": True, "analyst": "x"}).status_code == 401
